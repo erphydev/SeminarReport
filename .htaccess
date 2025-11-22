@@ -1,0 +1,18 @@
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews
+    </IfModule>
+
+    RewriteEngine On
+    
+    # نکته مهم: چون پروژه داخل پوشه است، باید بیس را مشخص کنیم
+    RewriteBase /SeminarReport/
+
+    # 1. جلوگیری از دسترسی مستقیم به پوشه‌های حساس
+    RewriteRule ^(app|vendor|storage|\.env|composer\.json) - [F,L]
+
+    # 2. هدایت همه درخواست‌ها به index.php
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^(.*)$ index.php [QSA,L]
+</IfModule>
