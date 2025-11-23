@@ -34,6 +34,7 @@ if (strpos($uri, '/admin') === 0) {
 }
 
 
+
 switch ($uri) {
     
     case '/login':
@@ -108,6 +109,13 @@ switch ($uri) {
     case '/admin/report/export-present':
         (new ReportController())->exportPresent();
         break;
+
+    //SMS 
+
+    case '/admin/report/send-sms':
+    $controller = new \App\Controllers\ReportController();
+    $controller->sendSms();
+    break;
 
 
     default:

@@ -77,4 +77,29 @@ class Guest {
         $stmt->execute([$seminarId]);
         return $stmt->fetchAll();
     }
+
+    public function getPresentPhonesBySeminar($seminarId)
+    {
+        $stmt = $this->db->prepare("SELECT phone FROM guests WHERE seminar_id = :id AND is_present = 1");
+        $stmt->execute(['id' => $seminarId]);
+        
+        return $stmt->fetchAll(\PDO::FETCH_COLUMN);
+    }
+
+    public function getExpertStats($seminarId)
+    {
+        $sql = "SELECT 
+                    e.name as expert_name,
+                    COUNT(g.id) as total_invited,
+                    SUM(CASE WHEN g.is_present = 1 THEN 1 ELSE 0 END) as total_present
+                FROM guests g
+                JOIN experts e ON g.expert_id = e.id
+                WHERE g.seminar_id = :id
+                GROUP BY e.id, e.name
+                ORDER BY total_present DESC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['id' => $seminarId]);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
 }
