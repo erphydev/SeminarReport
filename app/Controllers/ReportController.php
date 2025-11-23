@@ -17,23 +17,20 @@ class ReportController {
 
         $guestModel = new Guest();
         
-        // 1. لیست کل
         $allGuests = $guestModel->getAllBySeminar($seminarId);
-        // 2. لیست غایبین
         $absents = $guestModel->getAbsents($seminarId);
-        // 3. لیست حاضرین (جدید)
         $presents = $guestModel->getPresents($seminarId);
 
         require_once __DIR__ . '/../Views/reports/conversion_rate.php';
     }
 
-    // اکسل کل
+    //all
     public function exportTotal() { $this->generateExcel('all'); }
     
-    // اکسل غایبین
+    //Exel for absnts
     public function exportAbsent() { $this->generateExcel('absent'); }
 
-    // اکسل حاضرین (جدید)
+    //Exel for presents
     public function exportPresent() { $this->generateExcel('present'); }
 
     private function generateExcel($type) {
@@ -42,7 +39,6 @@ class ReportController {
 
         $guestModel = new Guest();
         
-        // انتخاب دیتا بر اساس نوع درخواست
         if ($type === 'absent') {
             $data = $guestModel->getAbsents($seminarId);
             $filename = "absent_list.xlsx";
@@ -68,7 +64,6 @@ class ReportController {
             $sheet->setCellValue('B' . $rowNum, $row['phone']);
             $sheet->setCellValue('C' . $rowNum, $row['expert_name']);
             
-            // ستون وضعیت/زمان
             if ($type === 'present') {
                 $status = $row['checkin_time'];
             } elseif ($type === 'absent') {

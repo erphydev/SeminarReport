@@ -7,7 +7,9 @@ use App\Models\Guest;
 class CheckInController {
 
     public function index() {
-        // پیدا کردن سمینار فعال
+
+        //find active seminar
+
         $seminarModel = new Seminar();
         $activeSeminar = $seminarModel->getActive();
 
@@ -28,32 +30,38 @@ class CheckInController {
             exit;
         }
 
-        $phone = $_POST['phone'] ?? '';
+        $rawPhone = $_POST['phone'] ?? '';
         $seminarId = $_POST['seminar_id'] ?? null;
 
+        $cleanPhone = trim($rawPhone);
+        
+        $phoneNoZero = ltrim($cleanPhone, '0');   // حالت بدون صفر (مثلا 912...)
+        $phoneWithZero = '0' . $phoneNoZero;      // حالت با صفر (مثلا 0912...)
+
         $guestModel = new Guest();
-        $guest = $guestModel->findByPhone($phone, $seminarId);
+
+        $guest = $guestModel->findByPhone($phoneWithZero, $seminarId);
+
+        if (!$guest) {
+            $guest = $guestModel->findByPhone($phoneNoZero, $seminarId);
+        }
 
         if ($guest) {
-            // 🔴 تغییر مهم: نتیجه عملیات دیتابیس را چک می‌کنیم
             $isSuccess = $guestModel->checkIn($guest['id'], $seminarId);
 
             if ($isSuccess) {
-                // فقط اگر واقعا در دیتابیس ثبت شد
                 $guestName = $guest['full_name'];
                 require_once __DIR__ . '/../Views/guest/success.php';
             } else {
-                // اگر در دیتابیس خطا خورد
-                $error = "❌ خطا در ثبت سیستم: عملیات دیتابیس شکست خورد. (جدول‌ها را چک کنید)";
+                $error = "❌ خطا در ثبت سیستم: عملیات دیتابیس شکست خورد.";
                 
-                // دوباره فرم را نشان بده
                 $seminarModel = new Seminar();
                 $activeSeminar = $seminarModel->getActive();
                 require_once __DIR__ . '/../Views/guest/checkin_form.php';
             }
 
         } else {
-            $error = "شماره شما در لیست مهمانان این سمینار یافت نشد.";
+            $error = "شماره شما ($cleanPhone) در لیست مهمانان یافت نشد.";
             
             $seminarModel = new Seminar();
             $activeSeminar = $seminarModel->getActive();

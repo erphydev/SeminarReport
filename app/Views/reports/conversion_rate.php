@@ -1,4 +1,6 @@
-<?php require_once __DIR__ . '/../layouts/header.php'; ?>
+<?php require_once __DIR__ . '/../layouts/header.php';
+      use App\Services\JalaliDate;
+?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
@@ -126,7 +128,9 @@
                                 <td class="fw-bold"><?= htmlspecialchars($guest['full_name']) ?></td>
                                 <td><?= $guest['phone'] ?></td>
                                 <td><?= htmlspecialchars($guest['expert_name']) ?></td>
-                                <td dir="ltr" class="text-end"><?= $guest['checkin_time'] ?></td>
+                                <td dir="ltr" class="text-end">
+                                    <?= JalaliDate::format($guest['checkin_time'], 'Y/m/d - H:i') ?>
+                                </td>                            
                             </tr>
                             <?php endforeach; ?>
                         </tbody>

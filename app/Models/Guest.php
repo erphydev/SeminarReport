@@ -11,24 +11,23 @@ class Guest {
         $this->db = Database::getConnection();
     }
 
-    // افزودن مهمان جدید (از طریق اکسل)
+    // add new guest
     public function create($seminarId, $expertId, $fullName, $phone) {
         $sql = "INSERT IGNORE INTO guests (seminar_id, expert_id, full_name, phone) VALUES (?, ?, ?, ?)";
         $stmt = $this->db->prepare($sql);
         return $stmt->execute([$seminarId, $expertId, $fullName, $phone]);
     }
 
-    // پیدا کردن مهمان با شماره موبایل
+    //find guest from phone number
     public function findByPhone($phone, $seminarId) {
         $stmt = $this->db->prepare("SELECT * FROM guests WHERE phone = ? AND seminar_id = ?");
         $stmt->execute([$phone, $seminarId]);
         return $stmt->fetch();
     }
 
-    // ثبت ورود (چک‌این) + ثبت در لاگ‌ها
-    
+    // Check in and log    
     public function checkIn($guestId, $seminarId) {
-        try { // ✅ فعال شد
+        try {    
             $this->db->beginTransaction();
 
             $stmt1 = $this->db->prepare("UPDATE guests SET is_present = 1, checkin_time = NOW() WHERE id = ?");
@@ -40,14 +39,13 @@ class Guest {
             $this->db->commit();
             return true;
 
-        } catch (\Exception $e) { // ✅ فعال شد
+        } catch (\Exception $e) {    
             $this->db->rollBack();
-            // die($e->getMessage()); // ❌ این خط را پاک یا کامنت کنید تا کاربر نبیند
             return false;
         }
     }
     
-    // دریافت لیست غایبین
+    // Get absnt Lists
     public function getAbsents($seminarId) {
         $sql = "SELECT g.full_name, g.phone, e.name as expert_name 
                 FROM guests g
@@ -58,7 +56,6 @@ class Guest {
         return $stmt->fetchAll();
     }
 
-    // 🟢 متد جدید (که ارور می‌داد): دریافت لیست کل مهمانان
     public function getAllBySeminar($seminarId) {
         $sql = "SELECT g.*, e.name as expert_name 
                 FROM guests g 

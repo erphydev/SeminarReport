@@ -13,27 +13,20 @@ use App\Controllers\CheckInController;
 use App\Controllers\ReportController;
 use App\Controllers\AuthController;
 
-// 2. محاسبه آدرس پایه (BASE_URL)
 $scriptName = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME']));
 $baseUrl = ($scriptName === '/') ? '' : $scriptName;
 define('BASE_URL', $baseUrl);
 
 
-// 3. دریافت و تمیز کردن آدرس درخواستی ($uri)
-// ⚠️ این بخش حتما باید قبل از بخش امنیت باشد
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
-// حذف نام پوشه پروژه از ابتدای آدرس (برای اجرا در ساب‌فولدر)
 if ($scriptName !== '/' && strpos($uri, $scriptName) === 0) {
     $uri = substr($uri, strlen($scriptName));
 }
 $uri = '/' . ltrim($uri, '/');
 
 
-// 4. 🛡️ نگهبان امنیتی (Security Guard)
-// حالا که $uri تعریف شده، می‌توانیم چکش کنیم
 if (strpos($uri, '/admin') === 0) {
-    // اگر کاربر ادمین نیست، برو به لاگین
     if (empty($_SESSION['is_admin'])) {
         header('Location: ' . BASE_URL . '/login');
         exit;
@@ -41,10 +34,8 @@ if (strpos($uri, '/admin') === 0) {
 }
 
 
-// 5. تعریف مسیرها (Routes)
 switch ($uri) {
     
-    // --- 🔐 احراز هویت ---
     case '/login':
         (new AuthController())->showLoginForm();
         break;
@@ -58,7 +49,7 @@ switch ($uri) {
         break;
 
 
-    // --- 🟢 بخش مهمان ---
+    // --- Gusets ---
     case '/':
     case '/checkin':
         (new CheckInController())->index();
@@ -69,7 +60,7 @@ switch ($uri) {
         break;
 
 
-    // --- 🔵 بخش ادمین ---
+    // --- admins ---
     case '/admin':
     case '/admin/dashboard':
         (new SeminarController())->index();
@@ -101,7 +92,7 @@ switch ($uri) {
         break;
 
 
-    // --- 🟡 بخش گزارشات ---
+    // --- reports ---
     case '/admin/report':
         (new ReportController())->show();
         break;

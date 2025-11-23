@@ -1,4 +1,6 @@
-<?php require_once __DIR__ . '/../layouts/header.php'; ?>
+<?php require_once __DIR__ . '/../layouts/header.php';
+use App\Services\JalaliDate;
+?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="fw-bold text-secondary">📋 لیست سمینارها</h2>
@@ -26,14 +28,12 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <!-- 🔴 اصلاح مهم: نام متغیر حلقه را seminar گذاشتیم -->
                         <?php foreach ($seminars as $seminar): ?>
                             <tr>
                                 <td><?= $seminar['id'] ?></td>
                                 <td class="fw-bold"><?= htmlspecialchars($seminar['title']) ?></td>
                                 <td><?= $seminar['date'] ?></td>
                                 
-                                <!-- ستون وضعیت -->
                                 <td>
                                     <?php if ($seminar['is_active']): ?>
                                         <span class="badge bg-success fs-6">✅ در حال برگزاری</span>
@@ -42,7 +42,6 @@
                                     <?php endif; ?>
                                 </td>
 
-                                <!-- ستون عملیات -->
                                 <td>
                                     <a href="<?= BASE_URL ?>/admin/seminar/upload?id=<?= $seminar['id'] ?>" 
                                        class="btn btn-sm btn-outline-primary" title="آپلود اکسل">
@@ -54,7 +53,6 @@
                                         📊 گزارش
                                     </a>
 
-                                    <!-- دکمه فعال‌سازی (فقط برای سمینارهای غیرفعال) -->
                                     <?php if (!$seminar['is_active']): ?>
                                         <a href="<?= BASE_URL ?>/admin/seminar/activate?id=<?= $seminar['id'] ?>" 
                                            class="btn btn-sm btn-warning fw-bold text-dark ms-1"
