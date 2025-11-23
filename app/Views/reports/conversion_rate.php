@@ -2,6 +2,42 @@
       use App\Services\JalaliDate;
 ?>
 
+<div class="container-fluid mt-3 px-0">
+    <?php 
+    if (isset($_GET['status'])) {
+        $status = $_GET['status'];
+        $alertType = 'info';
+        $message = '';
+        $icon = '';
+
+        switch ($status) {
+            case 'sent':
+                $alertType = 'success';
+                $message = '✅ پیامک‌ها با موفقیت در صف ارسال قرار گرفتند.';
+                break;
+            
+            case 'empty_list':
+                $alertType = 'warning';
+                $message = '⚠️ هیچ فرد "حاضری" در لیست وجود ندارد. پیامکی ارسال نشد.';
+                break;
+
+            case 'api_error':
+                $alertType = 'danger';
+                $message = '❌ خطا در اتصال به پنل پیامک! لطفاً شارژ پنل یا نام کاربری/رمز عبور را بررسی کنید.';
+                break;
+                
+            default:
+                $alertType = 'info';
+                $message = 'عملیات انجام شد.';
+        }
+    ?>
+        <div class="alert alert-<?= $alertType ?> alert-dismissible fade show shadow-sm" role="alert">
+            <span class="fw-bold"><?= $message ?></span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php } ?>
+</div>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h3 class="fw-bold text-dark">📊 داشبورد گزارشات</h3>
@@ -9,15 +45,14 @@
     </div>
     
     <div class="btn-group">
-        <a href="<?= BASE_URL ?>/admin/report/export-total?id=<?= $_GET['id'] ?>" class="btn btn-dark">
-            📥 کل لیست
-        </a>
-        <a href="<?= BASE_URL ?>/admin/report/export-present?id=<?= $_GET['id'] ?>" class="btn btn-success">
-            📥 حاضرین
-        </a>
-        <a href="<?= BASE_URL ?>/admin/report/export-absent?id=<?= $_GET['id'] ?>" class="btn btn-danger">
-            📥 غایبین
-        </a>
+        <!-- دکمه مودال پیامک -->
+        <button type="button" class="btn btn-warning fw-bold" data-bs-toggle="modal" data-bs-target="#smsModal">
+            📨 ارسال پیامک
+        </button>
+        
+        <a href="<?= BASE_URL ?>/admin/report/export-total?id=<?= $_GET['id'] ?>" class="btn btn-dark">📥 کل</a>
+        <a href="<?= BASE_URL ?>/admin/report/export-present?id=<?= $_GET['id'] ?>" class="btn btn-success">📥 حاضرین</a>
+        <a href="<?= BASE_URL ?>/admin/report/export-absent?id=<?= $_GET['id'] ?>" class="btn btn-danger">📥 غایبین</a>
     </div>
     <a href="<?= BASE_URL ?>/admin" class="btn btn-secondary ms-2">بازگشت</a>
 </div>
@@ -202,6 +237,27 @@
         </div>
     </div>
 
+
+</div>
+
+<div class="modal fade" id="smsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">ارسال پیامک به حاضرین (<?= count($presents) ?> نفر)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="<?= BASE_URL ?>/admin/report/send-sms" method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="seminar_id" value="<?= $_GET['id'] ?>">
+                    <textarea name="message" class="form-control" rows="5" placeholder="متن پیام..." required></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">ارسال</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 <?php require_once __DIR__ . '/../layouts/footer.php'; ?>
