@@ -117,6 +117,21 @@ switch ($uri) {
     $controller->sendSms();
     break;
 
+    case '/admin/guest/store':
+            if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+                (new \App\Controllers\GuestController())->store();
+            }
+    break;
+
+    case '/admin/conversion_rate': // یا /admin/report
+        (new \App\Controllers\ReportController())->show();
+    break;
+
+    case '/checkin/register':
+    (new CheckInController())->register();
+    break;
+
+
 
     default:
         http_response_code(404);

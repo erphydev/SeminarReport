@@ -15,6 +15,55 @@ class CheckInController
         $this->db = Database::getConnection();
     }
 
+    public function register()
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        try {
+            $seminarId = $_POST['seminar_id'] ?? 0;
+            $fullName = $_POST['full_name'] ?? '';
+            $phone = $_POST['phone'] ?? '';
+
+            // اعتبارسنجی
+            if (empty($fullName) || empty($phone)) {
+                echo json_encode(['success' => false, 'message' => 'لطفا نام و شماره را وارد کنید']);
+                exit;
+            }
+
+            // چک کردن تکراری بودن در دیتابیس
+            $stmt = $this->db->prepare("SELECT id FROM guests WHERE phone = :phone AND seminar_id = :seminar_id");
+            $stmt->execute([':phone' => $phone, ':seminar_id' => $seminarId]);
+            
+            if ($stmt->rowCount() > 0) {
+                echo json_encode(['success' => false, 'message' => 'این شماره قبلاً ثبت شده است.']);
+                exit;
+            }
+
+            // ثبت مهمان جدید و ثبت حضور همزمان
+            // نکته: expert_id را NULL می‌گذاریم
+            $sql = "INSERT INTO guests (seminar_id, full_name, phone, expert_id, is_present, checkin_time) 
+                    VALUES (:seminar_id, :full_name, :phone, NULL, 1, :time)";
+            
+            $insertStmt = $this->db->prepare($sql);
+            $insertStmt->execute([
+                ':seminar_id' => $seminarId,
+                ':full_name' => $fullName,
+                ':phone' => $phone,
+                ':time' => date('Y-m-d H:i:s')
+            ]);
+
+            echo json_encode([
+                'success' => true,
+                'guest_name' => $fullName,
+                'message' => 'ثبت نام و ورود انجام شد'
+            ]);
+
+        } catch (\Exception $e) {
+            echo json_encode(['success' => false, 'message' => 'خطای سیستم: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
     /**
      * نمایش فرم ورودی (View)
      */
