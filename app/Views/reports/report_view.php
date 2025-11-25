@@ -696,7 +696,7 @@ document.addEventListener("DOMContentLoaded", function() {
         tour.addStep({
             id: 'step-8',
             title: 'دکمه‌های عملیاتی',
-            text: 'از اینجا می‌توانید گزارش را چاپ کنید، خروجی اکسل بگیرید، مهمان جدید ثبت کنید یا پیامک انبوه ارسال نمایید.',
+            text: 'از اینجا می‌توانید گزارش را چاپ کنید، خروجی اکسل بگیرید، مهمان جدید ثبت کنید. یا پیامک انبوه ارسال نمایید.',
             attachTo: { element: '#tour-step-8', on: 'bottom' },
             buttons: [{ text: 'قبلی', action: tour.back }, { text: 'پایان', action: tour.complete }]
         });
