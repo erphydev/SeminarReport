@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controllers;
 
 use App\Models\Guest;
@@ -16,6 +17,7 @@ class ReportController {
         $guestModel = new Guest();
         
         // ۱. دریافت کل مهمان‌ها
+        // (چون در مدل LEFT JOIN زدیم، ثبت‌نام‌های دستی هم می‌آیند)
         $allGuests = $guestModel->getAllBySeminar($id);
 
         // --- مرتب‌سازی اولیه: کل لیست بر اساس نام (الفبا) ---
@@ -34,10 +36,9 @@ class ReportController {
 
         // --- مرتب‌سازی ثانویه: حاضرین بر اساس زمان ورود (جدیدترین بالا) ---
         usort($presents, function($a, $b) {
-            // اگر زمان ورود ندارند، برود ته لیست
             $t1 = $a['checkin_time'] ?? '0';
             $t2 = $b['checkin_time'] ?? '0';
-            return strcmp($t2, $t1); // نزولی (جدیدترین اول)
+            return strcmp($t2, $t1); // نزولی
         });
 
         // ۳. آمار کارشناسان
@@ -53,7 +54,7 @@ class ReportController {
             $stats[] = $row;
         }
 
-        // --- مرتب‌سازی کارشناسان: بر اساس درصد موفقیت (بیشترین بالا) ---
+        // --- مرتب‌سازی کارشناسان: بر اساس درصد موفقیت ---
         usort($stats, function($a, $b) {
             if ($a['conversion_rate'] == $b['conversion_rate']) {
                 return 0;
@@ -61,52 +62,44 @@ class ReportController {
             return ($a['conversion_rate'] > $b['conversion_rate']) ? -1 : 1;
         });
 
-        // فراخوانی ویو
-        require_once __DIR__ . '/../Views/reports/conversion_rate.php';
+        // فراخوانی ویو (مسیر اصلاح شده به داشبورد ادمین)
+        require_once __DIR__ . '/../Views/reports/report_view.php';
     }
 
     // متد ارسال پیامک
     public function sendSms() {
-            if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-                $seminarId = $_POST['seminar_id'];
-                $message = $_POST['message'];
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $seminarId = $_POST['seminar_id'];
+            $message = $_POST['message'];
 
-                $guestModel = new Guest();
-                // ۱. دریافت لیست (به روشی که قبلا اوکی کردیم)
-                $allGuests = $guestModel->getAllBySeminar($seminarId);
-                
-                // فیلتر کردن حاضرین
-                $presents = array_filter($allGuests, function($guest) {
-                    return $guest['is_present'] == 1;
-                });
+            $guestModel = new Guest();
+            $allGuests = $guestModel->getAllBySeminar($seminarId);
+            
+            // فیلتر کردن حاضرین
+            $presents = array_filter($allGuests, function($guest) {
+                return $guest['is_present'] == 1;
+            });
 
-                // استخراج شماره موبایل‌ها
-                $phoneNumbers = array_column($presents, 'phone');
+            // استخراج شماره موبایل‌ها
+            $phoneNumbers = array_column($presents, 'phone');
 
-                // حالت ۱: لیست خالی است
-                if (empty($phoneNumbers)) {
-                    header("Location: " . BASE_URL . "/admin/report?id=" . $seminarId . "&status=empty_list");
-                    exit;
-                }
-
-                // ۲. ارسال پیامک
-                $smsService = new SmsService();
-                $result = $smsService->sendBulk(array_values($phoneNumbers), $message);
-
-                // بررسی نتیجه ارسال
-                // پنل فراز معمولاً اگر موفق باشد یک رشته عددی (ID) برمی‌گرداند.
-                // اگر null یا false یا خطا باشد، یعنی ارسال نشده.
-                
-                if ($result && !is_numeric($result) && (strpos($result, 'Error') !== false || $result == '')) {
-                    // حالت ۲: خطای پنل (اگر خروجی شامل کلمه Error بود یا خالی بود)
-                    header("Location: " . BASE_URL . "/admin/report?id=" . $seminarId . "&status=api_error");
-                } else {
-                    // حالت ۳: موفقیت
-                    header("Location: " . BASE_URL . "/admin/report?id=" . $seminarId . "&status=sent");
-                }
+            if (empty($phoneNumbers)) {
+                header("Location: " . BASE_URL . "/admin/report?id=" . $seminarId . "&status=empty_list");
                 exit;
             }
+
+            $smsService = new SmsService();
+            $result = $smsService->sendBulk(array_values($phoneNumbers), $message);
+
+            // بررسی نتیجه ارسال
+            if ($result && !is_numeric($result) && (strpos($result, 'Error') !== false || $result == '')) {
+                header("Location: " . BASE_URL . "/admin/report?id=" . $seminarId . "&status=api_error");
+            } else {
+                header("Location: " . BASE_URL . "/admin/report?id=" . $seminarId . "&status=sent");
+            }
+            exit;
         }
+    }
 
     // ==========================================
     // بخش خروجی اکسل (Excel Export)
@@ -146,8 +139,6 @@ class ReportController {
         header('Pragma: no-cache');
         header('Expires: 0');
 
-        // شروع ساختار فایل اکسل (بر پایه HTML)
-        // این متا تگ باعث می‌شود حروف فارسی درست نمایش داده شوند
         echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
         echo '<head>';
         echo '<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />';
@@ -164,7 +155,6 @@ class ReportController {
         echo '<h2 style="text-align:center;">گزارش ' . $titleFileType . ' سمینار</h2>';
         echo '<table>';
         
-        // ردیف هدر جدول
         echo '<thead>
                 <tr>
                     <th>نام و نام خانوادگی</th>
@@ -175,19 +165,19 @@ class ReportController {
                 </tr>
               </thead>';
         
-        // ردیف‌های داده
         echo '<tbody>';
         foreach ($guests as $row) {
             $statusText = $row['is_present'] ? 'حاضر ✅' : 'غایب ❌';
             $statusClass = $row['is_present'] ? 'present' : 'absent';
             $checkin = $row['checkin_time'] ?? '-';
+            
+            // اصلاح نام کارشناس برای اکسل (اگر خالی بود بنویس ثبت دستی)
+            $expertName = !empty($row['expert_name']) ? $row['expert_name'] : 'ثبت دستی / آزاد';
 
-            // جلوگیری از تبدیل شماره موبایل به فرمت علمی (Scientific Notation) در اکسل
-            // با گذاشتن استایل mso-number-format
             echo '<tr>';
             echo '<td>' . htmlspecialchars($row['full_name']) . '</td>';
             echo '<td style="mso-number-format:\@;">' . $row['phone'] . '</td>'; 
-            echo '<td>' . htmlspecialchars($row['expert_name'] ?? '---') . '</td>';
+            echo '<td>' . htmlspecialchars($expertName) . '</td>';
             echo '<td class="'.$statusClass.'">' . $statusText . '</td>';
             echo '<td dir="ltr">' . $checkin . '</td>';
             echo '</tr>';
