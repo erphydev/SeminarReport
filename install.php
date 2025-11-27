@@ -77,6 +77,17 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     SET FOREIGN_KEY_CHECKS = 1;
+
+    CREATE TABLE `payments` (
+    `id` int(11) NOT NULL AUTO_INCREMENT,
+    `first_name` varchar(100) NOT NULL,
+    `last_name` varchar(100) NOT NULL,
+    `phone` varchar(20) NOT NULL,
+    `expert_name` varchar(100) NOT NULL,
+    `receipt_image` varchar(255) NOT NULL,
+    `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     ";
 
     $pdo->exec($sql);
