@@ -1,18 +1,49 @@
-<?php 
+<?php
 require_once __DIR__ . '/../layouts/header.php';
 use App\Services\JalaliDate;
 
-// --- 1. فیلتر کردن و تفکیک لیست‌ها ---
-$walkIns = array_filter($allGuests, fn($guest) => empty($guest['expert_id']));
-$invitedPresents = array_filter($presents, fn($guest) => !empty($guest['expert_id']));
-$invitedAbsents = array_filter($absents, fn($guest) => !empty($guest['expert_id']));
+// -------------------------------------------------------------------
+// 1. دریافت لیست پرداخت‌ها و محاسبه درآمد (بخش جدید)
+// -------------------------------------------------------------------
+$host = $_SERVER['DB_HOST'] ?? $_ENV['DB_HOST'] ?? 'localhost';
+$dbName = $_SERVER['DB_NAME'] ?? $_ENV['DB_NAME'] ?? 'seminar_db';
+$user = $_SERVER['DB_USER'] ?? $_ENV['DB_USER'] ?? 'root';
+$pass = $_SERVER['DB_PASS'] ?? $_ENV['DB_PASS'] ?? '';
 
-// --- 2. محاسبات آماری ---
-$totalInvited = count(array_filter($allGuests, fn($guest) => !empty($guest['expert_id'])));
+try {
+    $pdoReport = new PDO("mysql:host=$host;dbname=$dbName;charset=utf8mb4", $user, $pass);
+    $stmtPay = $pdoReport->prepare("
+        SELECT p.*, g.full_name, g.phone 
+        FROM payments p
+        JOIN guests g ON p.guest_id = g.id
+        WHERE g.seminar_id = ?
+        ORDER BY p.created_at DESC
+    ");
+    $stmtPay->execute([$_GET['id']]);
+    $paymentList = $stmtPay->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $paymentList = [];
+}
+
+// محاسبه مجموع درآمد
+$totalRevenue = 0;
+foreach ($paymentList as $p) {
+    $totalRevenue += $p['amount'];
+}
+
+// -------------------------------------------------------------------
+// 2. فیلتر کردن و محاسبات آماری (کد قبلی شما)
+// -------------------------------------------------------------------
+$walkIns = array_filter($allGuests, fn ($guest) => empty($guest['expert_id']));
+$invitedPresents = array_filter($presents, fn ($guest) => !empty($guest['expert_id']));
+$invitedAbsents = array_filter($absents, fn ($guest) => !empty($guest['expert_id']));
+
+$totalInvited = count(array_filter($allGuests, fn ($guest) => !empty($guest['expert_id'])));
 $totalCount = count($allGuests);
 $invitedPresentCount = count($invitedPresents);
 $walkInCount = count($walkIns);
 $absentCount = count($invitedAbsents);
+$paymentCount = count($paymentList); // تعداد واریزی‌ها
 $presentCount = $invitedPresentCount + $walkInCount;
 $presentPercent = $totalInvited > 0 ? round(($invitedPresentCount / $totalInvited) * 100) : 0;
 
@@ -28,294 +59,230 @@ foreach ($stats as $s) {
     }
 }
 
-// تابع کمکی برای ایجاد آواتار از حروف اول نام
+// توابع کمکی (Avatar)
 function getInitials($name) {
     $parts = explode(' ', trim($name));
-    if(count($parts) >= 2) {
-        return mb_substr($parts[0], 0, 1) . ' ' . mb_substr($parts[1], 0, 1);
-    }
+    if (count($parts) >= 2) return mb_substr($parts[0], 0, 1) . ' ' . mb_substr($parts[1], 0, 1);
     return mb_substr($name, 0, 2);
 }
-
-// رنگ‌بندی داینامیک برای آواتارها
 function getAvatarColor($name) {
     $colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6'];
     return $colors[abs(crc32($name)) % count($colors)];
 }
 ?>
 
-<!-- فونت و کتابخانه‌ها -->
-<link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+<!-- کتابخانه‌ها -->
+<link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/shepherd.js@10.0.1/dist/css/shepherd.css"/>
 
 <style>
     :root {
-        --font-family: 'Vazirmatn', system-ui, -apple-system, sans-serif;
-        --bg-body: #f1f5f9;
-        --text-main: #334155;
-        --text-muted: #64748b;
+        --font-main: 'Vazirmatn', sans-serif;
+        --bg-body: #f8fafc;
         --card-bg: #ffffff;
+        --text-main: #1e293b;
+        --text-muted: #64748b;
+        --primary: #4f46e5;
         --card-radius: 16px;
-        --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        --primary-color: #4f46e5;
-        --secondary-bg: #f8fafc;
+        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
     }
 
-    body {
-        font-family: var(--font-family) !important;
-        background-color: var(--bg-body);
-        color: var(--text-main);
-        overflow-x: hidden;
-    }
-
-    /* --- کامپوننت‌های عمومی --- */
-    .card {
-        background: var(--card-bg);
-        border: none;
-        border-radius: var(--card-radius);
-        box-shadow: var(--card-shadow);
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .card:hover {
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    }
+    body { font-family: var(--font-main) !important; background-color: var(--bg-body); color: var(--text-main); }
     
-    .btn-soft { background-color: white; border: 1px solid #e2e8f0; color: #475569; transition: all 0.2s; }
-    .btn-soft:hover { background-color: #f8fafc; border-color: #cbd5e1; color: #1e293b; }
-    
-    .btn-primary-gradient {
-        background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
-        color: white; border: none;
-    }
-    .btn-primary-gradient:hover { background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%); color: white; transform: translateY(-1px); }
+    .card { border: none; border-radius: var(--card-radius); background: var(--card-bg); box-shadow: var(--shadow-md); transition: transform 0.2s; }
+    .card:hover { transform: translateY(-2px); }
 
-    /* --- کارت‌های آمار (Stat Cards) --- */
-    .stat-card { position: relative; overflow: hidden; }
-    .stat-card .icon-box {
-        width: 48px; height: 48px;
-        border-radius: 12px;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 1.5rem;
-        margin-bottom: 1rem;
-    }
+    /* دکمه‌های گرادینت */
+    .btn-gradient { background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%); color: white; border: none; }
+    .btn-gradient:hover { background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%); color: white; }
+
+    /* کارت‌های آمار */
+    .stat-card { position: relative; overflow: hidden; border-radius: var(--card-radius); }
+    .stat-card .icon-box { width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
     .stat-card.blue .icon-box { background: #e0e7ff; color: #4338ca; }
     .stat-card.green .icon-box { background: #dcfce7; color: #15803d; }
+    .stat-card.purple .icon-box { background: #f3e8ff; color: #7e22ce; }
     .stat-card.yellow .icon-box { background: #fef9c3; color: #a16207; }
     .stat-card.red .icon-box { background: #fee2e2; color: #991b1b; }
+    .stat-card.teal .icon-box { background: #ccfbf1; color: #0f766e; }
 
-    /* --- رتبه‌بندی کارشناسان --- */
-    .expert-card {
-        text-align: center; padding: 1.5rem; border: 1px solid #f1f5f9;
-        background: linear-gradient(to bottom, #fff 0%, #f8fafc 100%);
-    }
-    .expert-rank-badge {
-        width: 30px; height: 30px; border-radius: 50%;
-        position: absolute; top: 10px; right: 10px;
-        display: flex; align-items: center; justify-content: center;
-        font-weight: bold; color: white; font-size: 0.8rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
+    /* رتبه‌بندی کارشناسان */
+    .expert-card { text-align: center; padding: 1.5rem; border: 1px solid #f1f5f9; background: linear-gradient(to bottom, #fff 0%, #f8fafc 100%); }
+    .expert-rank-badge { width: 30px; height: 30px; border-radius: 50%; position: absolute; top: 10px; right: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 0.8rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     .rank-1 .expert-rank-badge { background: linear-gradient(45deg, #FFD700, #FDB931); }
     .rank-2 .expert-rank-badge { background: linear-gradient(45deg, #E0E0E0, #BDBDBD); }
     .rank-3 .expert-rank-badge { background: linear-gradient(45deg, #CD7F32, #A0522D); }
     .rank-other .expert-rank-badge { background: #cbd5e1; color: #475569; }
 
-    /* --- جدول و تب‌ها --- */
-    .nav-pills-custom {
-        background: #e2e8f0; padding: 4px; border-radius: 12px; display: inline-flex;
-    }
-    .nav-pills-custom .nav-link {
-        border-radius: 10px; color: #64748b; font-weight: 500; padding: 8px 16px;
-    }
-    .nav-pills-custom .nav-link.active {
-        background: white; color: #0f172a; shadow: 0 1px 2px rgba(0,0,0,0.1);
-    }
-
-    .table-modern thead th {
-        background: transparent; border-bottom: 2px solid #f1f5f9;
-        font-size: 0.8rem; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px;
-        padding: 1rem 1.5rem;
-    }
-    .table-modern tbody td {
-        padding: 1rem 1.5rem; vertical-align: middle; border-bottom: 1px solid #f8fafc;
-        color: #334155; font-size: 0.95rem;
-    }
-    .table-modern tbody tr:last-child td { border-bottom: none; }
+    /* جدول مدرن */
+    .table-modern thead th { background: #f8fafc; color: #64748b; font-size: 0.85rem; font-weight: 600; padding: 1rem; border-bottom: 2px solid #e2e8f0; }
+    .table-modern tbody td { padding: 1rem; vertical-align: middle; border-bottom: 1px solid #f1f5f9; color: #334155; }
     .table-modern tbody tr:hover { background-color: #f8fafc; }
+    
+    /* تب‌ها */
+    .nav-pills-custom { background: #f1f5f9; padding: 5px; border-radius: 12px; display: inline-flex; }
+    .nav-pills-custom .nav-link { color: #64748b; font-weight: 500; padding: 8px 18px; border-radius: 10px; transition: all 0.3s; }
+    .nav-pills-custom .nav-link.active { background: white; color: #0f172a; box-shadow: var(--shadow-sm); }
 
-    .avatar {
-        width: 38px; height: 38px; border-radius: 50%; color: white;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 0.85rem; font-weight: 600; margin-left: 10px;
-    }
-
-    /* --- مدال --- */
-    .modal-content { border-radius: 20px; border: none; }
-    .modal-header { border-bottom: 1px solid #f1f5f9; padding: 1.5rem; }
-    .modal-footer { border-top: 1px solid #f1f5f9; padding: 1.5rem; }
-
-    @media print {
-        .no-print { display: none !important; }
-        .card { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; }
-        body { background: white; }
-    }
+    .avatar { width: 36px; height: 36px; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; }
+    
+    @media print { .no-print { display: none !important; } .card { box-shadow: none; border: 1px solid #ddd; } }
 </style>
 
 <div class="container-fluid py-5 px-lg-5">
 
-    <!-- بخش هدر -->
-    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-5 animate__animated animate__fadeIn">
+    <!-- هدر صفحه -->
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-5 animate__animated animate__fadeIn" id="tour-step-1">
         <div>
             <div class="d-flex align-items-center mb-2">
-                <span class="badge bg-white text-primary border me-2">ID: <?= $_GET['id'] ?></span>
-                <span class="text-muted small"><i class="bi bi-calendar me-1"></i><?= JalaliDate::format(date('Y-m-d'), 'd F Y') ?></span>
+                <span class="badge bg-white text-primary border me-2 rounded-pill">ID: <?= $_GET['id'] ?></span>
+                <span class="text-muted small"><i class="bi bi-calendar-event me-1"></i><?= JalaliDate::format(date('Y-m-d'), 'd F Y') ?></span>
             </div>
-            <h2 class="fw-bolder text-dark mb-0 ls-tight">داشبورد گزارش رویداد</h2>
+            <h2 class="fw-bolder text-dark mb-0">داشبورد گزارش رویداد</h2>
         </div>
         
-        <div class="d-flex gap-2 mt-3 mt-lg-0 no-print flex-wrap">
-            <button onclick="window.print()" class="btn btn-soft shadow-sm"><i class="bi bi-printer me-2"></i>چاپ</button>
+        <div class="d-flex gap-2 mt-3 mt-lg-0 no-print flex-wrap" id="tour-step-8">
+            <button onclick="window.print()" class="btn btn-white border shadow-sm"><i class="bi bi-printer me-2"></i>چاپ</button>
             <div class="dropdown">
-                <button class="btn btn-soft shadow-sm dropdown-toggle" data-bs-toggle="dropdown">
+                <button class="btn btn-white border shadow-sm dropdown-toggle" data-bs-toggle="dropdown">
                     <i class="bi bi-download me-2"></i>اکسل
                 </button>
+                <!-- منوی کامل اکسل که خواسته بودید -->
                 <ul class="dropdown-menu border-0 shadow-lg p-2 rounded-3">
                     <li><a class="dropdown-item rounded" href="<?= BASE_URL ?>/admin/report/export-total?id=<?= $_GET['id'] ?>">کل لیست</a></li>
                     <li><a class="dropdown-item rounded" href="<?= BASE_URL ?>/admin/report/export-present?id=<?= $_GET['id'] ?>">حاضرین</a></li>
                     <li><a class="dropdown-item rounded" href="<?= BASE_URL ?>/admin/report/export-absent?id=<?= $_GET['id'] ?>">غایبین</a></li>
                 </ul>
             </div>
-            <button class="btn btn-primary-gradient shadow-sm" data-bs-toggle="modal" data-bs-target="#addGuestModalReport">
+            <button class="btn btn-gradient shadow-sm" data-bs-toggle="modal" data-bs-target="#addGuestModalReport">
                 <i class="bi bi-person-plus-fill me-2"></i>ثبت مهمان
             </button>
             <button class="btn btn-warning text-white shadow-sm" data-bs-toggle="modal" data-bs-target="#smsModal">
                 <i class="bi bi-chat-text-fill me-2"></i>پیامک
             </button>
+            <button onclick="startTour()" class="btn btn-outline-primary shadow-sm"><i class="bi bi-question-circle me-2"></i>راهنما</button>
         </div>
     </div>
 
-    <!-- کارت‌های آمار -->
-    <div class="row g-4 mb-5">
-        <div class="col-xl-3 col-md-6">
+    <!-- آمار کلی (شامل باکس درآمد جدید) -->
+    <div class="row g-4 mb-5" id="tour-step-2">
+        <div class="col-xl-2 col-md-4 col-6">
             <div class="card stat-card blue h-100 p-4">
                 <div class="d-flex justify-content-between">
-                    <div>
-                        <p class="text-muted fw-bold small text-uppercase mb-1">کل دعوت‌ها</p>
-                        <h2 class="fw-bolder text-dark mb-0"><?= number_format($totalInvited) ?></h2>
-                    </div>
+                    <div><p class="text-muted fw-bold small mb-1">کل دعوت‌ها</p><h4 class="fw-bolder text-dark mb-0"><?= number_format($totalInvited) ?></h4></div>
                     <div class="icon-box"><i class="bi bi-people-fill"></i></div>
                 </div>
             </div>
         </div>
-        <div class="col-xl-3 col-md-6">
+        <div class="col-xl-2 col-md-4 col-6">
             <div class="card stat-card green h-100 p-4">
                 <div class="d-flex justify-content-between">
-                    <div>
-                        <p class="text-muted fw-bold small text-uppercase mb-1">حاضرین (دعوتی)</p>
-                        <h2 class="fw-bolder text-success mb-0"><?= number_format($invitedPresentCount) ?></h2>
-                        <span class="badge bg-light text-success mt-2">نرخ <?= $presentPercent ?>%</span>
-                    </div>
+                    <div><p class="text-muted fw-bold small mb-1">حاضرین</p><h4 class="fw-bolder text-success mb-0"><?= number_format($invitedPresentCount) ?></h4></div>
                     <div class="icon-box"><i class="bi bi-person-check-fill"></i></div>
                 </div>
             </div>
         </div>
-        <div class="col-xl-3 col-md-6">
+        <!-- باکس جدید: درآمد کل -->
+        <div class="col-xl-4 col-md-8 col-12">
+            <div class="card stat-card teal h-100 p-4 border-primary border-opacity-25" style="background: linear-gradient(to right, #ffffff, #f0fdfa);">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="text-muted fw-bold small mb-1 text-uppercase">مجموع درآمد رویداد</p>
+                        <h2 class="fw-bolder text-dark mb-0 mt-1"><?= number_format($totalRevenue) ?> <span class="fs-6 text-muted fw-normal">تومان</span></h2>
+                    </div>
+                    <div class="icon-box" style="width:55px;height:55px;"><i class="bi bi-wallet2"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6">
             <div class="card stat-card yellow h-100 p-4">
                 <div class="d-flex justify-content-between">
-                    <div>
-                        <p class="text-muted fw-bold small text-uppercase mb-1">ثبت دستی (Walk-in)</p>
-                        <h2 class="fw-bolder text-warning mb-0"><?= number_format($walkInCount) ?></h2>
-                    </div>
+                    <div><p class="text-muted fw-bold small mb-1">ثبت دستی</p><h4 class="fw-bolder text-warning mb-0"><?= number_format($walkInCount) ?></h4></div>
                     <div class="icon-box"><i class="bi bi-person-plus-fill"></i></div>
                 </div>
             </div>
         </div>
-        <div class="col-xl-3 col-md-6">
+        <div class="col-xl-2 col-md-4 col-6">
             <div class="card stat-card red h-100 p-4">
                 <div class="d-flex justify-content-between">
-                    <div>
-                        <p class="text-muted fw-bold small text-uppercase mb-1">غایبین</p>
-                        <h2 class="fw-bolder text-danger mb-0"><?= number_format($absentCount) ?></h2>
-                    </div>
+                    <div><p class="text-muted fw-bold small mb-1">غایبین</p><h4 class="fw-bolder text-danger mb-0"><?= number_format($absentCount) ?></h4></div>
                     <div class="icon-box"><i class="bi bi-person-x-fill"></i></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- نمودارها (با اصلاح باگ اسکرول) -->
+    <!-- نمودارها -->
     <div class="row g-4 mb-5">
-        <div class="col-lg-8">
+        <div class="col-lg-8" id="tour-step-3">
             <div class="card h-100">
                 <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0">
                     <h5 class="fw-bold text-dark">📊 عملکرد کارشناسان</h5>
                 </div>
                 <div class="card-body px-4 pb-4">
-                    <!-- FIX: wrapper div with relative position and fixed height -->
-                    <div style="position: relative; height: 320px; width: 100%;">
+                    <div style="position: relative; height: 300px; width: 100%;">
                         <canvas id="expertsChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-4">
+        <div class="col-lg-4" id="tour-step-4">
             <div class="card h-100">
                 <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0">
                     <h5 class="fw-bold text-dark">📈 وضعیت کلی حضور</h5>
                 </div>
                 <div class="card-body d-flex flex-column align-items-center justify-content-center">
-                     <!-- FIX: wrapper div with relative position and fixed height -->
-                    <div style="position: relative; height: 250px; width: 100%;">
+                    <div style="position: relative; height: 220px; width: 100%;">
                         <canvas id="attendanceChart"></canvas>
                     </div>
-                    <div class="mt-3 text-center small text-muted">
-                        میانگین حضور مهمانان در رویداد
-                    </div>
+                    <div class="mt-3 text-center small text-muted">میانگین حضور مهمانان</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- رتبه‌بندی کارشناسان -->
-    <div class="mb-5">
+    <!-- بخش رتبه‌بندی (که در نسخه قبل حذف شده بود و الان برگشت) -->
+    <div class="mb-5" id="tour-step-5">
         <h5 class="fw-bold text-dark mb-4 px-1">🏆 برترین کارشناسان</h5>
         <div class="row g-3">
-            <?php 
+            <?php
             $rank = 1;
-            foreach ($stats as $row): 
+            foreach ($stats as $row) :
                 if (empty($row['expert_name'])) continue;
                 $rate = round($row['conversion_rate']);
                 $rankClass = $rank <= 3 ? "rank-$rank" : "rank-other";
-                if($rank > 6) break;
+                if ($rank > 6) break;
             ?>
-            <div class="col-xl-2 col-md-4 col-6">
-                <div class="card expert-card h-100 <?= $rankClass ?>">
-                    <div class="expert-rank-badge"><?= $rank ?></div>
-                    <div class="mb-2">
-                        <span class="h4 fw-bolder text-dark"><?= $rate ?></span><small class="text-muted">%</small>
-                    </div>
-                    <h6 class="text-truncate fw-bold mb-1" title="<?= $row['expert_name'] ?>"><?= htmlspecialchars($row['expert_name']) ?></h6>
-                    <small class="text-muted d-block mb-3">نرخ تبدیل</small>
-                    <div class="d-flex justify-content-center gap-3 border-top pt-2">
-                        <div class="text-center"><span class="d-block fw-bold text-success"><?= $row['total_present'] ?></span><small style="font-size:10px">حاضر</small></div>
-                        <div class="text-center"><span class="d-block fw-bold text-secondary"><?= $row['total_invited'] ?></span><small style="font-size:10px">کل</small></div>
+                <div class="col-xl-2 col-md-4 col-6">
+                    <div class="card expert-card h-100 <?= $rankClass ?>">
+                        <div class="expert-rank-badge"><?= $rank ?></div>
+                        <div class="mb-2"><span class="h4 fw-bolder text-dark"><?= $rate ?></span><small class="text-muted">%</small></div>
+                        <h6 class="text-truncate fw-bold mb-1" title="<?= $row['expert_name'] ?>"><?= htmlspecialchars($row['expert_name']) ?></h6>
+                        <small class="text-muted d-block mb-3">نرخ تبدیل</small>
+                        <div class="d-flex justify-content-center gap-3 border-top pt-2">
+                            <div class="text-center"><span class="d-block fw-bold text-success"><?= $row['total_present'] ?></span><small style="font-size:10px">حاضر</small></div>
+                            <div class="text-center"><span class="d-block fw-bold text-secondary"><?= $row['total_invited'] ?></span><small style="font-size:10px">کل</small></div>
+                        </div>
                     </div>
                 </div>
-            </div>
             <?php $rank++; endforeach; ?>
         </div>
     </div>
 
-    <!-- لیست مهمانان -->
+    <!-- لیست کامل (واریزی‌ها + مهمانان) -->
     <div class="card">
         <div class="card-header bg-white border-0 py-4 px-4 d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
-            <ul class="nav nav-pills-custom" id="listTabs" role="tablist">
-                <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#present">حاضرین دعوتی</button></li>
+            <ul class="nav nav-pills-custom" id="tour-step-6" role="tablist">
+                <!-- تب جدید واریزی -->
+                <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#payments">💳 واریزی‌ها <span class="badge bg-dark rounded-pill ms-1"><?= $paymentCount ?></span></button></li>
+                <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#present">حاضرین دعوتی</button></li>
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#walkin">ثبت دستی</button></li>
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#absent">غایبین</button></li>
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#total">کل لیست</button></li>
             </ul>
-            <div class="position-relative w-100 w-md-auto">
+            <div class="position-relative w-100 w-md-auto" id="tour-step-7">
                 <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
                 <input type="text" id="tableSearch" class="form-control bg-light border-0 ps-5" style="border-radius:10px" placeholder="جستجو...">
             </div>
@@ -323,8 +290,56 @@ function getAvatarColor($name) {
         
         <div class="card-body p-0">
             <div class="tab-content">
-                <!-- Tab: Present -->
-                <div class="tab-pane fade show active" id="present">
+                
+                <!-- Tab 1: Payments (واریزی‌ها با نمایش مبلغ و دکمه صحیح) -->
+                <div class="tab-pane fade show active" id="payments">
+                    <div class="table-responsive">
+                        <table class="table table-modern mb-0 w-100">
+                            <thead>
+                                <tr>
+                                    <th class="ps-4">نام پرداخت کننده</th>
+                                    <th>تلفن</th>
+                                    <th>مبلغ (تومان)</th>
+                                    <th>کارشناس ثبت</th>
+                                    <th>تاریخ پرداخت</th>
+                                    <th class="text-end pe-4">فیش</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if(empty($paymentList)): ?>
+                                    <tr><td colspan="6" class="text-center py-5 text-muted">هیچ واریزی ثبت نشده است.</td></tr>
+                                <?php else: ?>
+                                    <?php foreach ($paymentList as $pay): ?>
+                                    <tr>
+                                        <td class="ps-4 fw-bold text-dark">
+                                            <div class="d-flex align-items-center">
+                                                <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                                <?= htmlspecialchars($pay['full_name']) ?>
+                                            </div>
+                                        </td>
+                                        <td class="font-monospace text-muted"><?= $pay['phone'] ?></td>
+                                        <td class="fw-bold text-primary fs-6">
+                                            <?= number_format($pay['amount']) ?>
+                                        </td>
+                                        <td><span class="badge bg-secondary bg-opacity-10 text-dark border"><?= htmlspecialchars($pay['registrar_expert']) ?></span></td>
+                                        <td class="text-muted small"><?= JalaliDate::format($pay['created_at'], 'Y/m/d H:i') ?></td>
+                                        <td class="text-end pe-4">
+                                            <!-- دکمه مشاهده با مسیر اصلاح شده -->
+                                            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" 
+                                                    onclick="showReceipt('<?= BASE_URL ?>/public/uploads/receipts/<?= $pay['receipt_image'] ?>')">
+                                                <i class="bi bi-eye-fill me-1"></i> مشاهده
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Present -->
+                <div class="tab-pane fade" id="present">
                     <div class="table-responsive">
                         <table class="table table-modern mb-0 w-100">
                             <thead><tr><th class="ps-4">مهمان</th><th>تلفن تماس</th><th>کارشناس</th><th class="text-end pe-4">ورود</th></tr></thead>
@@ -334,7 +349,7 @@ function getAvatarColor($name) {
                                     <td class="ps-4">
                                         <div class="d-flex align-items-center">
                                             <div class="avatar" style="background:<?= getAvatarColor($guest['full_name']) ?>"><?= getInitials($guest['full_name']) ?></div>
-                                            <div class="ms-2"><div class="fw-bold"><?= htmlspecialchars($guest['full_name']) ?></div></div>
+                                            <div class="ms-2 fw-bold"><?= htmlspecialchars($guest['full_name']) ?></div>
                                         </div>
                                     </td>
                                     <td class="text-muted font-monospace"><?= $guest['phone'] ?></td>
@@ -347,9 +362,9 @@ function getAvatarColor($name) {
                     </div>
                 </div>
 
-                <!-- Tab: Walkin -->
+                <!-- Tab 3: Walkin -->
                 <div class="tab-pane fade" id="walkin">
-                    <div class="table-responsive">
+                     <div class="table-responsive">
                         <table class="table table-modern mb-0 w-100">
                             <thead><tr><th class="ps-4">مهمان</th><th>تلفن تماس</th><th>نوع</th><th class="text-end pe-4">ورود</th></tr></thead>
                             <tbody>
@@ -358,7 +373,7 @@ function getAvatarColor($name) {
                                     <td class="ps-4">
                                         <div class="d-flex align-items-center">
                                             <div class="avatar bg-warning text-dark"><i class="bi bi-person"></i></div>
-                                            <div class="ms-2"><div class="fw-bold"><?= htmlspecialchars($guest['full_name']) ?></div></div>
+                                            <div class="ms-2 fw-bold"><?= htmlspecialchars($guest['full_name']) ?></div>
                                         </div>
                                     </td>
                                     <td class="text-muted font-monospace"><?= $guest['phone'] ?></td>
@@ -371,7 +386,7 @@ function getAvatarColor($name) {
                     </div>
                 </div>
 
-                <!-- Tab: Absent -->
+                <!-- Tab 4: Absent -->
                 <div class="tab-pane fade" id="absent">
                     <div class="table-responsive">
                         <table class="table table-modern mb-0 w-100">
@@ -382,14 +397,12 @@ function getAvatarColor($name) {
                                     <td class="ps-4">
                                         <div class="d-flex align-items-center">
                                             <div class="avatar bg-light text-secondary"><i class="bi bi-person"></i></div>
-                                            <div class="ms-2"><div class="fw-bold text-secondary"><?= htmlspecialchars($guest['full_name']) ?></div></div>
+                                            <div class="ms-2 fw-bold text-secondary"><?= htmlspecialchars($guest['full_name']) ?></div>
                                         </div>
                                     </td>
                                     <td class="text-muted font-monospace"><?= $guest['phone'] ?></td>
                                     <td><?= htmlspecialchars($guest['expert_name']) ?></td>
-                                    <td class="text-end pe-4">
-                                        <a href="tel:<?= $guest['phone'] ?>" class="btn btn-sm btn-outline-danger rounded-pill px-3 no-print">تماس</a>
-                                    </td>
+                                    <td class="text-end pe-4"><a href="tel:<?= $guest['phone'] ?>" class="btn btn-sm btn-outline-danger rounded-pill px-3 no-print">تماس</a></td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -397,7 +410,7 @@ function getAvatarColor($name) {
                     </div>
                 </div>
 
-                <!-- Tab: Total -->
+                <!-- Tab 5: Total -->
                 <div class="tab-pane fade" id="total">
                     <div class="table-responsive">
                         <table class="table table-modern mb-0 w-100">
@@ -420,6 +433,21 @@ function getAvatarColor($name) {
                             </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Show Receipt Image -->
+<div class="modal fade" id="receiptModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content bg-transparent border-0 shadow-none">
+            <div class="modal-body text-center position-relative p-0">
+                <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-3 p-2 bg-dark rounded-circle" data-bs-dismiss="modal" style="z-index: 10;"></button>
+                <img id="receiptImageSrc" src="" class="img-fluid rounded-3 shadow-lg" style="max-height: 85vh; object-fit: contain;">
+                <div class="mt-3">
+                    <a id="downloadLink" href="" download class="btn btn-light rounded-pill px-4 shadow"><i class="bi bi-download me-2"></i>دانلود تصویر</a>
                 </div>
             </div>
         </div>
@@ -452,7 +480,7 @@ function getAvatarColor($name) {
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">انصراف</button>
-                    <button type="submit" class="btn btn-primary-gradient rounded-pill px-4 shadow-sm">ذخیره اطلاعات</button>
+                    <button type="submit" class="btn btn-gradient rounded-pill px-4 shadow-sm">ذخیره اطلاعات</button>
                 </div>
             </form>
         </div>
@@ -486,88 +514,55 @@ function getAvatarColor($name) {
     </div>
 </div>
 
+<!-- اسکریپت‌ها -->
 <script>
+function showReceipt(imgUrl) {
+    document.getElementById('receiptImageSrc').src = imgUrl;
+    document.getElementById('downloadLink').href = imgUrl;
+    var myModal = new bootstrap.Modal(document.getElementById('receiptModal'));
+    myModal.show();
+}
+
 document.addEventListener("DOMContentLoaded", function() {
-    // تنظیمات سراسری چارت
     Chart.defaults.font.family = "'Vazirmatn', sans-serif";
     Chart.defaults.color = '#64748b';
 
-    // 1. Bar Chart (عملکرد کارشناسان)
     const ctxBar = document.getElementById('expertsChart').getContext('2d');
     new Chart(ctxBar, {
         type: 'bar',
         data: {
             labels: <?= json_encode($expertNames) ?>,
             datasets: [
-                { 
-                    label: 'حاضرین', 
-                    data: <?= json_encode($expertPresents) ?>, 
-                    backgroundColor: '#4f46e5', 
-                    borderRadius: 6, 
-                    barPercentage: 0.6 
-                },
-                { 
-                    label: 'کل دعوت‌ها', 
-                    data: <?= json_encode($expertInvites) ?>, 
-                    backgroundColor: '#e2e8f0', 
-                    borderRadius: 6, 
-                    barPercentage: 0.6,
-                    grouped: false, // حالت روی هم افتادن بدون استک واقعی
-                    order: 1
-                }
+                { label: 'حاضرین', data: <?= json_encode($expertPresents) ?>, backgroundColor: '#4f46e5', borderRadius: 6, barPercentage: 0.6 },
+                { label: 'کل دعوت‌ها', data: <?= json_encode($expertInvites) ?>, backgroundColor: '#e2e8f0', borderRadius: 6, barPercentage: 0.6, grouped: false, order: 1 }
             ]
         },
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, // حل مشکل اسکرول
-            scales: { 
-                x: { grid: { display: false } }, 
-                y: { beginAtZero: true, grid: { borderDash: [5, 5], color: '#f1f5f9' } } 
-            },
-            plugins: { legend: { display: false } }
-        }
+        options: { responsive: true, maintainAspectRatio: false, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { borderDash: [5, 5], color: '#f1f5f9' } } }, plugins: { legend: { display: false } } }
     });
 
-    // 2. Doughnut Chart (حضور و غیاب)
     const ctxDoughnut = document.getElementById('attendanceChart').getContext('2d');
     new Chart(ctxDoughnut, {
         type: 'doughnut',
         data: {
             labels: ['دعوتی حاضر', 'ثبت دستی', 'غایب'],
-            datasets: [{
-                data: [<?= $invitedPresentCount ?>, <?= $walkInCount ?>, <?= $absentCount ?>],
-                backgroundColor: ['#10b981', '#f59e0b', '#ef4444'], 
-                borderWidth: 0,
-                hoverOffset: 6
-            }]
+            datasets: [{ data: [<?= $invitedPresentCount ?>, <?= $walkInCount ?>, <?= $absentCount ?>], backgroundColor: ['#10b981', '#f59e0b', '#ef4444'], borderWidth: 0, hoverOffset: 6 }]
         },
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, // حل مشکل اسکرول
-            cutout: '75%', 
-            plugins: { legend: { display: false } } 
-        },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } } },
         plugins: [{
             id: 'centerText',
             beforeDraw: function(chart) {
                 const { width, height, ctx } = chart;
                 ctx.restore();
                 const fontSize = (height / 120).toFixed(2);
-                ctx.font = `bold ${fontSize}em Vazirmatn`;
-                ctx.textBaseline = 'middle';
-                ctx.textAlign = 'center';
-                ctx.fillStyle = '#334155';
+                ctx.font = `bold ${fontSize}em Vazirmatn`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.fillStyle = '#334155';
                 ctx.fillText('<?= $presentPercent ?>%', width / 2, height / 2 - 10);
-                
-                ctx.font = `normal ${fontSize * 0.45}em Vazirmatn`;
-                ctx.fillStyle = '#94a3b8';
+                ctx.font = `normal ${fontSize * 0.45}em Vazirmatn`; ctx.fillStyle = '#94a3b8';
                 ctx.fillText('نرخ حضور', width / 2, height / 2 + 20);
                 ctx.save();
             }
         }]
     });
 
-    // 3. جستجوی زنده در جدول
     document.getElementById('tableSearch').addEventListener('keyup', function() {
         const val = this.value.toLowerCase().trim();
         const activeTab = document.querySelector('.tab-pane.show.active');
@@ -579,6 +574,20 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/shepherd.js@10.0.1/dist/js/shepherd.min.js"></script>
+<script>
+    let tour;
+    function startTour() {
+        tour = new Shepherd.Tour({
+            useModalOverlay: true,
+            defaultStepOptions: { classes: 'shadow-md bg-light-100', scrollTo: { behavior: 'smooth', block: 'center' } }
+        });
+        tour.addStep({ id: 'step-1', title: 'خوش آمدید!', text: 'اینجا داشبورد گزارش رویداد شماست.', attachTo: { element: '#tour-step-1', on: 'bottom' }, buttons: [{ text: 'بعدی', action: tour.next }] });
+        tour.addStep({ id: 'step-6', title: 'لیست مهمانان و واریزی‌ها', text: 'در تب اول (واریزی‌ها) می‌توانید لیست پرداخت‌کنندگان، مبلغ و تصویر فیش آن‌ها را ببینید.', attachTo: { element: '#tour-step-6', on: 'bottom' }, buttons: [{ text: 'قبلی', action: tour.back }, { text: 'پایان', action: tour.complete }] });
+        tour.start();
+    }
 </script>
 
 <?php require_once __DIR__ . '/../layouts/footer.php'; ?>
