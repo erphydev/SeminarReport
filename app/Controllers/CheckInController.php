@@ -2,7 +2,7 @@
 
 namespace App\Controllers;
 
-use App\Config\Database; // استفاده از کلاس دیتابیس شما
+use App\config\Database; // استفاده از کلاس دیتابیس شما
 use PDO;
 
 class CheckInController
