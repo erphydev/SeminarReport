@@ -13,9 +13,9 @@ class PaymentController
     {
         // تنظیمات اتصال به دیتابیس
         $host = $_SERVER['DB_HOST'] ?? 'localhost';
-        $db   = $_SERVER['DB_NAME'] ?? 'salescoaching_seminar';
-        $user = $_SERVER['DB_USER'] ?? 'root';
-        $pass = $_SERVER['DB_PASS'] ?? '';
+        $dbName = $_SERVER['DB_NAME'] ?? 'salescoaching_seminar';
+        $user = $_SERVER['DB_USER'] ?? 'salescoaching_seminar';
+        $pass = $_SERVER['DB_PASS'] ?? 'Nuw%xri6R9NuK+rQ';
         $charset = 'utf8mb4';
 
         $dsn = "mysql:host=$host;dbname=$db;charset=$charset";

@@ -4,8 +4,8 @@ require_once __DIR__ . '/../layouts/header.php';
 // --- اتصال به دیتابیس برای خواندن وضعیت تنظیمات ---
 $host = $_SERVER['DB_HOST'] ?? 'localhost';
 $dbName = $_SERVER['DB_NAME'] ?? 'salescoaching_seminar';
-$user = $_SERVER['DB_USER'] ?? 'root';
-$pass = $_SERVER['DB_PASS'] ?? '';
+$user = $_SERVER['DB_USER'] ?? 'salescoaching_seminar';
+$pass = $_SERVER['DB_PASS'] ?? 'Nuw%xri6R9NuK+rQ';
 
 $isNoPayActive = true; // پیش‌فرض
 try {
