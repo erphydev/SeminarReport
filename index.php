@@ -15,25 +15,36 @@ use App\Controllers\AuthController;
 use App\Controllers\PaymentController;
 
 // ---------------------------------------------------------
-// گام ۱: تشخیص مسیر و تعریف BASE_URL (این بخش به بالا منتقل شد)
+// گام ۱: تشخیص مسیر و تعریف BASE_URL (اصلاح شده)
 // ---------------------------------------------------------
-$scriptName = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME']));
+
+// 1. به دست آوردن نام پوشه پروژه (مثلاً /Sem)
+$basePath = dirname($_SERVER['SCRIPT_NAME']);
+// تبدیل بک‌اسلش به اسلش (برای سازگاری لینوکس و ویندوز)
+$basePath = str_replace('\\', '/', $basePath);
+
+// 2. به دست آوردن آدرس درخواستی تمیز (بدون پارامترهای ؟id=...)
 $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
-// حذف نام پوشه پروژه از ابتدای آدرس
-if ($scriptName !== '/' && stripos($requestUri, $scriptName) === 0) {
-    $requestUri = substr($requestUri, strlen($scriptName));
+// 3. حذف نام پوشه از آدرس درخواستی (برای درست کار کردن Switch Case)
+// مثال: تبدیل /Sem/payment به /payment
+if ($basePath !== '/' && strpos($requestUri, $basePath) === 0) {
+    $relativePath = substr($requestUri, strlen($basePath));
+} else {
+    $relativePath = $requestUri;
 }
 
-// استانداردسازی آدرس
-$uri = '/' . trim($requestUri, '/');
-if ($uri === '') {
-    $uri = '/';
-}
+// 4. استانداردسازی نهایی متغیر uri (برای استفاده در switch)
+$uri = '/' . trim($relativePath, '/');
 
-// تعریف ثابت BASE_URL (حالا قبل از استفاده تعریف می‌شود)
-$baseUrl = ($scriptName === '/') ? '' : $scriptName;
-define('BASE_URL', $baseUrl);
+// 5. تعریف ثابت BASE_URL (برای استفاده در لینک‌های HTML و ریدایرکت‌ها)
+// اگر اسکریپت در پوشه Sem باشد، این مقدار /Sem می‌شود تا لینک‌ها شکسته نشوند
+define('BASE_URL', ($basePath === '/') ? '' : $basePath);
+
+// دیباگ موقت (اگر باز هم کار نکرد، خط زیر را از کامنت درآورید تا ببینید چه چیزی چاپ می‌شود)
+// echo "Base: $basePath <br> URI: $uri"; exit;
+
+
 
 // ---------------------------------------------------------
 // گام ۲: بررسی امنیت و لاگین ادمین
