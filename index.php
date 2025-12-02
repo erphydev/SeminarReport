@@ -15,43 +15,26 @@ use App\Controllers\AuthController;
 use App\Controllers\PaymentController;
 
 // ---------------------------------------------------------
-// گام ۱: تشخیص مسیر و تعریف BASE_URL (اصلاح شده)
+// گام ۱: تشخیص مسیر و تعریف BASE_URL
 // ---------------------------------------------------------
-
-// 1. به دست آوردن نام پوشه پروژه (مثلاً /Sem)
 $basePath = dirname($_SERVER['SCRIPT_NAME']);
-// تبدیل بک‌اسلش به اسلش (برای سازگاری لینوکس و ویندوز)
 $basePath = str_replace('\\', '/', $basePath);
-
-// 2. به دست آوردن آدرس درخواستی تمیز (بدون پارامترهای ؟id=...)
 $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
-// 3. حذف نام پوشه از آدرس درخواستی (برای درست کار کردن Switch Case)
-// مثال: تبدیل /Sem/payment به /payment
 if ($basePath !== '/' && strpos($requestUri, $basePath) === 0) {
     $relativePath = substr($requestUri, strlen($basePath));
 } else {
     $relativePath = $requestUri;
 }
 
-// 4. استانداردسازی نهایی متغیر uri (برای استفاده در switch)
 $uri = '/' . trim($relativePath, '/');
-
-// 5. تعریف ثابت BASE_URL (برای استفاده در لینک‌های HTML و ریدایرکت‌ها)
-// اگر اسکریپت در پوشه Sem باشد، این مقدار /Sem می‌شود تا لینک‌ها شکسته نشوند
 define('BASE_URL', ($basePath === '/') ? '' : $basePath);
-
-// دیباگ موقت (اگر باز هم کار نکرد، خط زیر را از کامنت درآورید تا ببینید چه چیزی چاپ می‌شود)
-// echo "Base: $basePath <br> URI: $uri"; exit;
-
-
 
 // ---------------------------------------------------------
 // گام ۲: بررسی امنیت و لاگین ادمین
 // ---------------------------------------------------------
 if (strpos($uri, '/admin') === 0) {
     if (empty($_SESSION['is_admin'])) {
-        // حالا BASE_URL تعریف شده و خطا نمی‌دهد
         header('Location: ' . BASE_URL . '/login');
         exit;
     }
@@ -61,7 +44,7 @@ if (strpos($uri, '/admin') === 0) {
 // گام ۳: روتینگ (Switch Case)
 // ---------------------------------------------------------
 switch ($uri) {
-    
+
     // --- Auth ---
     case '/login':
         (new AuthController())->showLoginForm();
@@ -81,7 +64,7 @@ switch ($uri) {
     case '/checkin':
         (new CheckInController())->index();
         break;
-    
+
     case '/checkin/verify':
         (new CheckInController())->verify();
         break;
@@ -118,7 +101,7 @@ switch ($uri) {
     case '/admin/seminar/download-sample':
         (new SeminarController())->downloadSample();
         break;
-    
+
     case '/admin/seminar/activate':
         (new SeminarController())->activate();
         break;
@@ -163,7 +146,6 @@ switch ($uri) {
         break;
 
     case '/payment/check-phone':
-         // روت جدید برای بررسی شماره موبایل
         if (class_exists('App\Controllers\PaymentController')) {
             (new PaymentController())->checkPhone();
         }
@@ -172,6 +154,35 @@ switch ($uri) {
     case '/payment/submit':
         if (class_exists('App\Controllers\PaymentController')) {
             (new PaymentController())->submit();
+        }
+        break;
+
+    // --- SETTINGS (بخش جدید: تنظیمات سیستم) ---
+    // این بخش برای ذخیره تنظیمات فعال/غیرفعال کردن "بدون پیش‌پرداخت" است
+    case '/admin/settings/update':
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            // اتصال مستقیم به دیتابیس برای ذخیره تنظیمات
+            $host = $_SERVER['DB_HOST'] ?? 'localhost';
+            $dbName = $_SERVER['DB_NAME'] ?? 'salescoaching_seminar';
+            $user = $_SERVER['DB_USER'] ?? 'root';
+            $pass = $_SERVER['DB_PASS'] ?? '';
+
+            try {
+                $pdoSet = new PDO("mysql:host=$host;dbname=$dbName;charset=utf8mb4", $user, $pass);
+                $pdoSet->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+                // اگر تیک خورده باشد مقدار 1 وگرنه 0
+                $isActive = isset($_POST['enable_no_prepayment']) ? '1' : '0';
+
+                // دستور Upsert (اگر بود آپدیت کن، اگر نبود بساز)
+                $stmt = $pdoSet->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('enable_no_prepayment', :val) ON DUPLICATE KEY UPDATE setting_value = :val");
+                $stmt->execute([':val' => $isActive]);
+
+                header('Location: ' . BASE_URL . '/admin/dashboard?status=settings_updated');
+                exit;
+            } catch (Exception $e) {
+                die("خطا در ذخیره تنظیمات: " . $e->getMessage());
+            }
         }
         break;
 
