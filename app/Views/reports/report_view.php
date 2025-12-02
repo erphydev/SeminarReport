@@ -1,49 +1,66 @@
 <?php
+
 require_once __DIR__ . '/../layouts/header.php';
 use App\Services\JalaliDate;
 
 // -------------------------------------------------------------------
-// 1. دریافت لیست پرداخت‌ها و محاسبه درآمد (بخش جدید)
+// تنظیمات اتصال به دیتابیس
 // -------------------------------------------------------------------
-$host = $_SERVER['DB_HOST'] ?? $_ENV['DB_HOST'] ?? 'localhost';
-$dbName = $_SERVER['DB_NAME'] ?? $_ENV['DB_NAME'] ?? 'seminar_db';
-$user = $_SERVER['DB_USER'] ?? $_ENV['DB_USER'] ?? 'root';
-$pass = $_SERVER['DB_PASS'] ?? $_ENV['DB_PASS'] ?? '';
+$host = $_SERVER['DB_HOST'] ?? 'localhost';
+$dbName = $_SERVER['DB_NAME'] ?? 'salescoaching_seminar';
+$user = $_SERVER['DB_USER'] ?? 'root';
+$pass = $_SERVER['DB_PASS'] ?? '';
+
+$seminarId = $_GET['id'] ?? 0;
+$paymentList = [];
+$totalRevenue = 0;
 
 try {
     $pdoReport = new PDO("mysql:host=$host;dbname=$dbName;charset=utf8mb4", $user, $pass);
+    $pdoReport->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+    // 1. دریافت واریزی‌ها (فقط مخصوص همین سمینار)
     $stmtPay = $pdoReport->prepare("
-        SELECT p.*, g.full_name, g.phone 
+        SELECT 
+            p.*, 
+            g.full_name, 
+            g.phone,
+            g.seminar_id
         FROM payments p
-        JOIN guests g ON p.guest_id = g.id
-        WHERE g.seminar_id = ?
+        INNER JOIN guests g ON p.guest_id = g.id
+        WHERE g.seminar_id = :id
         ORDER BY p.created_at DESC
     ");
-    $stmtPay->execute([$_GET['id']]);
+    
+    $stmtPay->execute([':id' => $seminarId]);
     $paymentList = $stmtPay->fetchAll(PDO::FETCH_ASSOC);
+
+    // محاسبه درآمد
+    foreach ($paymentList as $p) {
+        $totalRevenue += $p['amount'];
+    }
+
 } catch (Exception $e) {
     $paymentList = [];
 }
 
-// محاسبه مجموع درآمد
-$totalRevenue = 0;
-foreach ($paymentList as $p) {
-    $totalRevenue += $p['amount'];
-}
+// -------------------------------------------------------------------
+// 2. فیلتر کردن و محاسبات آماری مهمانان
+// -------------------------------------------------------------------
+$allGuests = $allGuests ?? [];
+$presents = $presents ?? [];
+$absents = $absents ?? [];
+$stats = $stats ?? [];
 
-// -------------------------------------------------------------------
-// 2. فیلتر کردن و محاسبات آماری (کد قبلی شما)
-// -------------------------------------------------------------------
 $walkIns = array_filter($allGuests, fn ($guest) => empty($guest['expert_id']));
 $invitedPresents = array_filter($presents, fn ($guest) => !empty($guest['expert_id']));
 $invitedAbsents = array_filter($absents, fn ($guest) => !empty($guest['expert_id']));
 
 $totalInvited = count(array_filter($allGuests, fn ($guest) => !empty($guest['expert_id'])));
-$totalCount = count($allGuests);
 $invitedPresentCount = count($invitedPresents);
 $walkInCount = count($walkIns);
 $absentCount = count($invitedAbsents);
-$paymentCount = count($paymentList); // تعداد واریزی‌ها
+$paymentCount = count($paymentList); 
 $presentCount = $invitedPresentCount + $walkInCount;
 $presentPercent = $totalInvited > 0 ? round(($invitedPresentCount / $totalInvited) * 100) : 0;
 
@@ -59,19 +76,19 @@ foreach ($stats as $s) {
     }
 }
 
-// توابع کمکی (Avatar)
+// توابع کمکی
 function getInitials($name) {
-    $parts = explode(' ', trim($name));
+    $parts = explode(' ', trim($name ?? ''));
     if (count($parts) >= 2) return mb_substr($parts[0], 0, 1) . ' ' . mb_substr($parts[1], 0, 1);
-    return mb_substr($name, 0, 2);
+    return mb_substr($name ?? 'U', 0, 2);
 }
 function getAvatarColor($name) {
     $colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6'];
-    return $colors[abs(crc32($name)) % count($colors)];
+    return $colors[abs(crc32($name ?? 'def')) % count($colors)];
 }
 ?>
 
-<!-- کتابخانه‌ها -->
+<!-- استایل‌ها -->
 <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/shepherd.js@10.0.1/dist/css/shepherd.css"/>
@@ -82,78 +99,56 @@ function getAvatarColor($name) {
         --bg-body: #f8fafc;
         --card-bg: #ffffff;
         --text-main: #1e293b;
-        --text-muted: #64748b;
         --primary: #4f46e5;
         --card-radius: 16px;
-        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
     }
-
     body { font-family: var(--font-main) !important; background-color: var(--bg-body); color: var(--text-main); }
-    
     .card { border: none; border-radius: var(--card-radius); background: var(--card-bg); box-shadow: var(--shadow-md); transition: transform 0.2s; }
     .card:hover { transform: translateY(-2px); }
-
-    /* دکمه‌های گرادینت */
     .btn-gradient { background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%); color: white; border: none; }
-    .btn-gradient:hover { background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%); color: white; }
-
-    /* کارت‌های آمار */
     .stat-card { position: relative; overflow: hidden; border-radius: var(--card-radius); }
     .stat-card .icon-box { width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
     .stat-card.blue .icon-box { background: #e0e7ff; color: #4338ca; }
     .stat-card.green .icon-box { background: #dcfce7; color: #15803d; }
-    .stat-card.purple .icon-box { background: #f3e8ff; color: #7e22ce; }
+    .stat-card.teal .icon-box { background: #ccfbf1; color: #0f766e; }
     .stat-card.yellow .icon-box { background: #fef9c3; color: #a16207; }
     .stat-card.red .icon-box { background: #fee2e2; color: #991b1b; }
-    .stat-card.teal .icon-box { background: #ccfbf1; color: #0f766e; }
-
-    /* رتبه‌بندی کارشناسان */
     .expert-card { text-align: center; padding: 1.5rem; border: 1px solid #f1f5f9; background: linear-gradient(to bottom, #fff 0%, #f8fafc 100%); }
-    .expert-rank-badge { width: 30px; height: 30px; border-radius: 50%; position: absolute; top: 10px; right: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 0.8rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .expert-rank-badge { width: 30px; height: 30px; border-radius: 50%; position: absolute; top: 10px; right: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 0.8rem; }
     .rank-1 .expert-rank-badge { background: linear-gradient(45deg, #FFD700, #FDB931); }
-    .rank-2 .expert-rank-badge { background: linear-gradient(45deg, #E0E0E0, #BDBDBD); }
-    .rank-3 .expert-rank-badge { background: linear-gradient(45deg, #CD7F32, #A0522D); }
     .rank-other .expert-rank-badge { background: #cbd5e1; color: #475569; }
-
-    /* جدول مدرن */
     .table-modern thead th { background: #f8fafc; color: #64748b; font-size: 0.85rem; font-weight: 600; padding: 1rem; border-bottom: 2px solid #e2e8f0; }
     .table-modern tbody td { padding: 1rem; vertical-align: middle; border-bottom: 1px solid #f1f5f9; color: #334155; }
-    .table-modern tbody tr:hover { background-color: #f8fafc; }
-    
-    /* تب‌ها */
     .nav-pills-custom { background: #f1f5f9; padding: 5px; border-radius: 12px; display: inline-flex; }
     .nav-pills-custom .nav-link { color: #64748b; font-weight: 500; padding: 8px 18px; border-radius: 10px; transition: all 0.3s; }
-    .nav-pills-custom .nav-link.active { background: white; color: #0f172a; box-shadow: var(--shadow-sm); }
-
+    .nav-pills-custom .nav-link.active { background: white; color: #0f172a; box-shadow: var(--shadow-md); }
     .avatar { width: 36px; height: 36px; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; }
-    
     @media print { .no-print { display: none !important; } .card { box-shadow: none; border: 1px solid #ddd; } }
 </style>
 
 <div class="container-fluid py-5 px-lg-5">
 
     <!-- هدر صفحه -->
-    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-5 animate__animated animate__fadeIn" id="tour-step-1">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-5 animate__animated animate__fadeIn">
         <div>
             <div class="d-flex align-items-center mb-2">
-                <span class="badge bg-white text-primary border me-2 rounded-pill">ID: <?= $_GET['id'] ?></span>
+                <span class="badge bg-white text-primary border me-2 rounded-pill">سمینار ID: <?= $seminarId ?></span>
                 <span class="text-muted small"><i class="bi bi-calendar-event me-1"></i><?= JalaliDate::format(date('Y-m-d'), 'd F Y') ?></span>
             </div>
             <h2 class="fw-bolder text-dark mb-0">داشبورد گزارش رویداد</h2>
         </div>
         
-        <div class="d-flex gap-2 mt-3 mt-lg-0 no-print flex-wrap" id="tour-step-8">
+        <div class="d-flex gap-2 mt-3 mt-lg-0 no-print flex-wrap">
             <button onclick="window.print()" class="btn btn-white border shadow-sm"><i class="bi bi-printer me-2"></i>چاپ</button>
             <div class="dropdown">
                 <button class="btn btn-white border shadow-sm dropdown-toggle" data-bs-toggle="dropdown">
                     <i class="bi bi-download me-2"></i>اکسل
                 </button>
-                <!-- منوی کامل اکسل که خواسته بودید -->
                 <ul class="dropdown-menu border-0 shadow-lg p-2 rounded-3">
-                    <li><a class="dropdown-item rounded" href="<?= BASE_URL ?>/admin/report/export-total?id=<?= $_GET['id'] ?>">کل لیست</a></li>
-                    <li><a class="dropdown-item rounded" href="<?= BASE_URL ?>/admin/report/export-present?id=<?= $_GET['id'] ?>">حاضرین</a></li>
-                    <li><a class="dropdown-item rounded" href="<?= BASE_URL ?>/admin/report/export-absent?id=<?= $_GET['id'] ?>">غایبین</a></li>
+                    <li><a class="dropdown-item rounded" href="<?= BASE_URL ?>/admin/report/export-total?id=<?= $seminarId ?>">کل لیست</a></li>
+                    <li><a class="dropdown-item rounded" href="<?= BASE_URL ?>/admin/report/export-present?id=<?= $seminarId ?>">حاضرین</a></li>
+                    <li><a class="dropdown-item rounded" href="<?= BASE_URL ?>/admin/report/export-absent?id=<?= $seminarId ?>">غایبین</a></li>
                 </ul>
             </div>
             <button class="btn btn-gradient shadow-sm" data-bs-toggle="modal" data-bs-target="#addGuestModalReport">
@@ -162,12 +157,11 @@ function getAvatarColor($name) {
             <button class="btn btn-warning text-white shadow-sm" data-bs-toggle="modal" data-bs-target="#smsModal">
                 <i class="bi bi-chat-text-fill me-2"></i>پیامک
             </button>
-            <button onclick="startTour()" class="btn btn-outline-primary shadow-sm"><i class="bi bi-question-circle me-2"></i>راهنما</button>
         </div>
     </div>
 
-    <!-- آمار کلی (شامل باکس درآمد جدید) -->
-    <div class="row g-4 mb-5" id="tour-step-2">
+    <!-- آمار کلی -->
+    <div class="row g-4 mb-5">
         <div class="col-xl-2 col-md-4 col-6">
             <div class="card stat-card blue h-100 p-4">
                 <div class="d-flex justify-content-between">
@@ -184,12 +178,12 @@ function getAvatarColor($name) {
                 </div>
             </div>
         </div>
-        <!-- باکس جدید: درآمد کل -->
+        <!-- باکس درآمد کل -->
         <div class="col-xl-4 col-md-8 col-12">
             <div class="card stat-card teal h-100 p-4 border-primary border-opacity-25" style="background: linear-gradient(to right, #ffffff, #f0fdfa);">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <p class="text-muted fw-bold small mb-1 text-uppercase">مجموع درآمد رویداد</p>
+                        <p class="text-muted fw-bold small mb-1 text-uppercase">مجموع درآمد این سمینار</p>
                         <h2 class="fw-bolder text-dark mb-0 mt-1"><?= number_format($totalRevenue) ?> <span class="fs-6 text-muted fw-normal">تومان</span></h2>
                     </div>
                     <div class="icon-box" style="width:55px;height:55px;"><i class="bi bi-wallet2"></i></div>
@@ -216,7 +210,7 @@ function getAvatarColor($name) {
 
     <!-- نمودارها -->
     <div class="row g-4 mb-5">
-        <div class="col-lg-8" id="tour-step-3">
+        <div class="col-lg-8">
             <div class="card h-100">
                 <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0">
                     <h5 class="fw-bold text-dark">📊 عملکرد کارشناسان</h5>
@@ -228,7 +222,7 @@ function getAvatarColor($name) {
                 </div>
             </div>
         </div>
-        <div class="col-lg-4" id="tour-step-4">
+        <div class="col-lg-4">
             <div class="card h-100">
                 <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0">
                     <h5 class="fw-bold text-dark">📈 وضعیت کلی حضور</h5>
@@ -243,8 +237,8 @@ function getAvatarColor($name) {
         </div>
     </div>
 
-    <!-- بخش رتبه‌بندی (که در نسخه قبل حذف شده بود و الان برگشت) -->
-    <div class="mb-5" id="tour-step-5">
+    <!-- رتبه‌بندی کارشناسان -->
+    <div class="mb-5">
         <h5 class="fw-bold text-dark mb-4 px-1">🏆 برترین کارشناسان</h5>
         <div class="row g-3">
             <?php
@@ -271,18 +265,17 @@ function getAvatarColor($name) {
         </div>
     </div>
 
-    <!-- لیست کامل (واریزی‌ها + مهمانان) -->
+    <!-- جداول -->
     <div class="card">
         <div class="card-header bg-white border-0 py-4 px-4 d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
-            <ul class="nav nav-pills-custom" id="tour-step-6" role="tablist">
-                <!-- تب جدید واریزی -->
+            <ul class="nav nav-pills-custom" role="tablist">
                 <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#payments">💳 واریزی‌ها <span class="badge bg-dark rounded-pill ms-1"><?= $paymentCount ?></span></button></li>
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#present">حاضرین دعوتی</button></li>
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#walkin">ثبت دستی</button></li>
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#absent">غایبین</button></li>
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#total">کل لیست</button></li>
             </ul>
-            <div class="position-relative w-100 w-md-auto" id="tour-step-7">
+            <div class="position-relative w-100 w-md-auto">
                 <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
                 <input type="text" id="tableSearch" class="form-control bg-light border-0 ps-5" style="border-radius:10px" placeholder="جستجو...">
             </div>
@@ -291,7 +284,7 @@ function getAvatarColor($name) {
         <div class="card-body p-0">
             <div class="tab-content">
                 
-                <!-- Tab 1: Payments (واریزی‌ها با نمایش مبلغ و دکمه صحیح) -->
+                <!-- Tab: Payments (تمیز شده و فیلتر شده) -->
                 <div class="tab-pane fade show active" id="payments">
                     <div class="table-responsive">
                         <table class="table table-modern mb-0 w-100">
@@ -307,24 +300,23 @@ function getAvatarColor($name) {
                             </thead>
                             <tbody>
                                 <?php if(empty($paymentList)): ?>
-                                    <tr><td colspan="6" class="text-center py-5 text-muted">هیچ واریزی ثبت نشده است.</td></tr>
+                                    <tr><td colspan="6" class="text-center py-5 text-muted">هیچ واریزی برای این سمینار ثبت نشده است.</td></tr>
                                 <?php else: ?>
                                     <?php foreach ($paymentList as $pay): ?>
                                     <tr>
                                         <td class="ps-4 fw-bold text-dark">
                                             <div class="d-flex align-items-center">
                                                 <i class="bi bi-check-circle-fill text-success me-2"></i>
-                                                <?= htmlspecialchars($pay['full_name']) ?>
+                                                <?= htmlspecialchars($pay['full_name'] ?? 'نامشخص') ?>
                                             </div>
                                         </td>
                                         <td class="font-monospace text-muted"><?= $pay['phone'] ?></td>
                                         <td class="fw-bold text-primary fs-6">
                                             <?= number_format($pay['amount']) ?>
                                         </td>
-                                        <td><span class="badge bg-secondary bg-opacity-10 text-dark border"><?= htmlspecialchars($pay['registrar_expert']) ?></span></td>
+                                        <td><span class="badge bg-secondary bg-opacity-10 text-dark border"><?= htmlspecialchars($pay['registrar_expert'] ?? '-') ?></span></td>
                                         <td class="text-muted small"><?= JalaliDate::format($pay['created_at'], 'Y/m/d H:i') ?></td>
                                         <td class="text-end pe-4">
-                                            <!-- دکمه مشاهده با مسیر اصلاح شده -->
                                             <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" 
                                                     onclick="showReceipt('<?= BASE_URL ?>/public/uploads/receipts/<?= $pay['receipt_image'] ?>')">
                                                 <i class="bi bi-eye-fill me-1"></i> مشاهده
@@ -338,7 +330,7 @@ function getAvatarColor($name) {
                     </div>
                 </div>
 
-                <!-- Tab 2: Present -->
+                <!-- Tab: Present -->
                 <div class="tab-pane fade" id="present">
                     <div class="table-responsive">
                         <table class="table table-modern mb-0 w-100">
@@ -362,7 +354,7 @@ function getAvatarColor($name) {
                     </div>
                 </div>
 
-                <!-- Tab 3: Walkin -->
+                <!-- Tab: Walkin -->
                 <div class="tab-pane fade" id="walkin">
                      <div class="table-responsive">
                         <table class="table table-modern mb-0 w-100">
@@ -386,7 +378,7 @@ function getAvatarColor($name) {
                     </div>
                 </div>
 
-                <!-- Tab 4: Absent -->
+                <!-- Tab: Absent -->
                 <div class="tab-pane fade" id="absent">
                     <div class="table-responsive">
                         <table class="table table-modern mb-0 w-100">
@@ -410,7 +402,7 @@ function getAvatarColor($name) {
                     </div>
                 </div>
 
-                <!-- Tab 5: Total -->
+                <!-- Tab: Total -->
                 <div class="tab-pane fade" id="total">
                     <div class="table-responsive">
                         <table class="table table-modern mb-0 w-100">
@@ -439,7 +431,7 @@ function getAvatarColor($name) {
     </div>
 </div>
 
-<!-- Modal: Show Receipt Image -->
+<!-- Modal: Show Receipt -->
 <div class="modal fade" id="receiptModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content bg-transparent border-0 shadow-none">
@@ -464,7 +456,7 @@ function getAvatarColor($name) {
             </div>
             <form action="<?= BASE_URL ?>/admin/guest/store" method="POST">
                 <div class="modal-body">
-                    <input type="hidden" name="seminar_id" value="<?= $_GET['id'] ?>">
+                    <input type="hidden" name="seminar_id" value="<?= $seminarId ?>">
                     <div class="mb-3">
                         <label class="form-label small text-muted">نام و نام خانوادگی</label>
                         <input type="text" name="full_name" class="form-control bg-light border-0 py-3" required>
@@ -487,7 +479,7 @@ function getAvatarColor($name) {
     </div>
 </div>
 
-<!-- Modal: Send SMS -->
+<!-- Modal: SMS -->
 <div class="modal fade" id="smsModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -501,7 +493,7 @@ function getAvatarColor($name) {
                         <i class="bi bi-info-circle-fill fs-4 me-3"></i>
                         <div>این پیام برای <strong><?= $presentCount ?> نفر</strong> (کل حاضرین) ارسال خواهد شد.</div>
                     </div>
-                    <input type="hidden" name="seminar_id" value="<?= $_GET['id'] ?>">
+                    <input type="hidden" name="seminar_id" value="<?= $seminarId ?>">
                     <label class="form-label small text-muted">متن پیامک</label>
                     <textarea name="message" class="form-control bg-light border-0" rows="5" required placeholder="پیام خود را اینجا بنویسید..."></textarea>
                 </div>
@@ -514,7 +506,7 @@ function getAvatarColor($name) {
     </div>
 </div>
 
-<!-- اسکریپت‌ها -->
+<!-- Scripts -->
 <script>
 function showReceipt(imgUrl) {
     document.getElementById('receiptImageSrc').src = imgUrl;
@@ -574,20 +566,6 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 });
-</script>
-
-<script src="https://cdn.jsdelivr.net/npm/shepherd.js@10.0.1/dist/js/shepherd.min.js"></script>
-<script>
-    let tour;
-    function startTour() {
-        tour = new Shepherd.Tour({
-            useModalOverlay: true,
-            defaultStepOptions: { classes: 'shadow-md bg-light-100', scrollTo: { behavior: 'smooth', block: 'center' } }
-        });
-        tour.addStep({ id: 'step-1', title: 'خوش آمدید!', text: 'اینجا داشبورد گزارش رویداد شماست.', attachTo: { element: '#tour-step-1', on: 'bottom' }, buttons: [{ text: 'بعدی', action: tour.next }] });
-        tour.addStep({ id: 'step-6', title: 'لیست مهمانان و واریزی‌ها', text: 'در تب اول (واریزی‌ها) می‌توانید لیست پرداخت‌کنندگان، مبلغ و تصویر فیش آن‌ها را ببینید.', attachTo: { element: '#tour-step-6', on: 'bottom' }, buttons: [{ text: 'قبلی', action: tour.back }, { text: 'پایان', action: tour.complete }] });
-        tour.start();
-    }
 </script>
 
 <?php require_once __DIR__ . '/../layouts/footer.php'; ?>

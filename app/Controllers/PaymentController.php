@@ -12,9 +12,9 @@ class PaymentController
     public function __construct()
     {
         $host = $_SERVER['DB_HOST'] ?? $_ENV['DB_HOST'] ?? 'localhost';
-        $dbName = $_SERVER['DB_NAME'] ?? $_ENV['DB_NAME'] ?? 'seminar_db';
-        $user = $_SERVER['DB_USER'] ?? $_ENV['DB_USER'] ?? 'root';
-        $pass = $_SERVER['DB_PASS'] ?? $_ENV['DB_PASS'] ?? '';
+        $dbName = $_SERVER['DB_NAME'] ?? $_ENV['DB_NAME'] ?? 'salescoaching_seminar';
+        $user = $_SERVER['DB_USER'] ?? $_ENV['DB_USER'] ?? 'salescoaching_seminar';
+        $pass = $_SERVER['DB_PASS'] ?? $_ENV['DB_PASS'] ?? 'Nuw%xri6R9NuK+rQ';
 
         try {
             $this->pdo = new PDO("mysql:host=$host;dbname=$dbName;charset=utf8mb4", $user, $pass);
@@ -75,64 +75,85 @@ class PaymentController
     }
 
     public function submit()
-    {
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            
-            $phone = $_POST['phone'] ?? '';
-            $expertName = $_POST['payment_expert_name'] ?? '';
-            $guestId = $_POST['guest_id'] ?? '';
-            
-            // دریافت مبلغ و حذف ویرگول‌ها (مثلا 1,000,000 می‌شود 1000000)
-            $amountRaw = $_POST['amount'] ?? '0';
-            $amount = str_replace(',', '', $amountRaw);
+{
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        
+        $phone = $_POST['phone'] ?? '';
+        $expertName = $_POST['payment_expert_name'] ?? '';
+        $guestId = $_POST['guest_id'] ?? '';
+        
+        // دریافت مبلغ و حذف ویرگول‌ها
+        $amountRaw = $_POST['amount'] ?? '0';
+        $amount = str_replace(',', '', $amountRaw);
 
-            if (empty($guestId) || empty($phone)) {
-                header('Location: ' . BASE_URL . '/payment?status=guest_not_found');
-                exit;
+        if (empty($guestId) || empty($phone)) {
+            header('Location: ' . BASE_URL . '/payment?status=guest_not_found');
+            exit;
+        }
+
+        if (isset($_FILES['receipt_image']) && $_FILES['receipt_image']['error'] === UPLOAD_ERR_OK) {
+            
+            $uploadDir = __DIR__ . '/../../public/uploads/receipts/';
+            
+            // اطمینان از وجود پوشه
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0777, true);
             }
 
-            if (isset($_FILES['receipt_image']) && $_FILES['receipt_image']['error'] === UPLOAD_ERR_OK) {
-                
-                $uploadDir = __DIR__ . '/../../public/uploads/receipts/';
-                if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+            $fileName = $_FILES['receipt_image']['name'];
+            $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+            $newFileName = time() . '_' . bin2hex(random_bytes(3)) . '.' . $ext;
+            $destPath = $uploadDir . $newFileName;
 
-                $fileName = $_FILES['receipt_image']['name'];
-                $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-                $newFileName = time() . '_' . bin2hex(random_bytes(3)) . '.' . $ext;
-                $destPath = $uploadDir . $newFileName;
+            $allowed = ['jpg', 'jpeg', 'png', 'pdf'];
 
-                $allowed = ['jpg', 'jpeg', 'png', 'pdf'];
+            if (in_array($ext, $allowed)) {
+                if(move_uploaded_file($_FILES['receipt_image']['tmp_name'], $destPath)) {
+                    
+                    try {
+                        $this->pdo->beginTransaction();
 
-                if (in_array($ext, $allowed)) {
-                    if(move_uploaded_file($_FILES['receipt_image']['tmp_name'], $destPath)) {
+                        // 1. درج در جدول پرداختی‌ها
+                        $sql = "INSERT INTO payments (guest_id, registrar_expert, amount, receipt_image, created_at) VALUES (?, ?, ?, ?, NOW())";
+                        $stmt = $this->pdo->prepare($sql);
                         
-                        try {
-                            $this->pdo->beginTransaction();
-
-                            // اضافه کردن amount به کوئری
-                            $sql = "INSERT INTO payments (guest_id, registrar_expert, amount, receipt_image) VALUES (?, ?, ?, ?)";
-                            $stmt = $this->pdo->prepare($sql);
-                            $stmt->execute([$guestId, $expertName, $amount, $newFileName]);
-
-                            $updateSql = "UPDATE guests SET payment_status = 'paid' WHERE id = ?";
-                            $stmtUpdate = $this->pdo->prepare($updateSql);
-                            $stmtUpdate->execute([$guestId]);
-
-                            $this->pdo->commit();
-                            
-                            header('Location: ' . BASE_URL . '/payment?status=success');
-                            exit;
-
-                        } catch (PDOException $e) {
-                            $this->pdo->rollBack();
-                            header('Location: ' . BASE_URL . '/payment?status=db_error');
-                            exit;
+                        // چک کردن اینکه مقادیر نال نباشند
+                        if(!$stmt->execute([$guestId, $expertName, $amount, $newFileName])) {
+                            throw new PDOException("خطا در اجرای کوئری اینسرت");
                         }
+
+                        // 2. آپدیت وضعیت مهمان
+                        $updateSql = "UPDATE guests SET payment_status = 'paid' WHERE id = ?";
+                        $stmtUpdate = $this->pdo->prepare($updateSql);
+                        $stmtUpdate->execute([$guestId]);
+
+                        $this->pdo->commit();
+                        
+                        header('Location: ' . BASE_URL . '/payment?status=success');
+                        exit;
+
+                    } catch (PDOException $e) {
+                        $this->pdo->rollBack();
+                        
+                        // --- تغییر مهم برای دیباگ ---
+                        // این خط را موقتا فعال کنید تا متن دقیق خطا را ببینید
+                        echo "<div style='direction:ltr; text-align:left; background:#f8d7da; padding:20px; color:#721c24;'>";
+                        echo "<h3>Database Error:</h3>";
+                        echo "<p>" . $e->getMessage() . "</p>";
+                        echo "<p>File: " . $e->getFile() . " Line: " . $e->getLine() . "</p>";
+                        echo "</div>";
+                        die(); 
+                        // -----------------------------
+                        
+                        // بعد از رفع مشکل، خطوط بالا را پاک کرده و خط زیر را از کامنت درآورید:
+                        // header('Location: ' . BASE_URL . '/payment?status=db_error');
+                        // exit;
                     }
                 }
             }
-            header('Location: ' . BASE_URL . '/payment?status=upload_error');
-            exit;
         }
+        header('Location: ' . BASE_URL . '/payment?status=upload_error');
+        exit;
     }
+}
 }

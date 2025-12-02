@@ -5,14 +5,14 @@
 
     RewriteEngine On
     
-    # نکته مهم: چون پروژه داخل پوشه است، باید بیس را مشخص کنیم
-    RewriteBase /SeminarReport/
+    # ✅ اصلاح شد: نام پوشه طبق عکس شما Seminar است
+    RewriteBase /Seminar/
 
-    # 1. جلوگیری از دسترسی مستقیم به پوشه‌های حساس
-    RewriteRule ^(app|vendor|storage|\.env|composer\.json) - [F,L]
+    # 1. جلوگیری از دسترسی مستقیم به پوشه‌های حساس و فایل‌های سیستمی
+    RewriteRule ^(app|vendor|storage|\.env|composer\.json|\.git) - [F,L]
 
     # 2. هدایت همه درخواست‌ها به index.php
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteRule ^(.*)$ index.php [QSA,L]
+    RewriteRule ^ index.php [QSA,L]
 </IfModule>
