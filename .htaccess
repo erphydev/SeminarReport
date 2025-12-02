@@ -5,13 +5,12 @@
 
     RewriteEngine On
     
-    # ✅ اصلاح شد: نام پوشه طبق عکس شما Seminar است
-    RewriteBase /Seminar/
+    RewriteBase /Sem/
 
-    # 1. جلوگیری از دسترسی مستقیم به پوشه‌های حساس و فایل‌های سیستمی
+    # 1. جلوگیری از دسترسی مستقیم به پوشه‌های حساس
     RewriteRule ^(app|vendor|storage|\.env|composer\.json|\.git) - [F,L]
 
-    # 2. هدایت همه درخواست‌ها به index.php
+    # 2. هدایت همه درخواست‌ها به index.php اگر فایل یا پوشه واقعی نباشند
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [QSA,L]
