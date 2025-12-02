@@ -164,8 +164,8 @@ switch ($uri) {
             // اتصال مستقیم به دیتابیس برای ذخیره تنظیمات
             $host = $_SERVER['DB_HOST'] ?? 'localhost';
             $dbName = $_SERVER['DB_NAME'] ?? 'salescoaching_seminar';
-            $user = $_SERVER['DB_USER'] ?? 'root';
-            $pass = $_SERVER['DB_PASS'] ?? '';
+            $user = $_SERVER['DB_USER'] ?? 'salescoaching_seminar';
+            $pass = $_SERVER['DB_PASS'] ?? 'Nuw%xri6R9NuK+rQ';
 
             try {
                 $pdoSet = new PDO("mysql:host=$host;dbname=$dbName;charset=utf8mb4", $user, $pass);
