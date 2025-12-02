@@ -1,51 +1,40 @@
 <?php
 
+// اگر پوشه vendor ندارید و ارور می‌دهد، این ۳ خط را حذف کنید و مقادیر را دستی در متغیرها بنویسید
 require_once __DIR__ . '/vendor/autoload.php';
-
 use Dotenv\Dotenv;
-
-//load .env file
 $dotenv = Dotenv::createImmutable(__DIR__);
-$dotenv->load();
+$dotenv->safeLoad(); // تغییر به safeLoad برای جلوگیری از ارور در صورت نبود فایل
 
-$host = $_SERVER['DB_HOST'] ?? $_ENV['DB_HOST'] ?? 'localhost';
-$dbName = $_SERVER['DB_NAME'] ?? $_ENV['DB_NAME'] ?? 'seminar_db';
-$user = $_SERVER['DB_USER'] ?? $_ENV['DB_USER'] ?? 'root';
-$pass = $_SERVER['DB_PASS'] ?? $_ENV['DB_PASS'] ?? '';
+// دریافت اطلاعات از env یا استفاده از مقادیر پیش‌فرض (حتما فایل .env را در هاست بسازید)
+$host = $_ENV['DB_HOST'] ?? 'localhost';
+$dbName = $_ENV['DB_NAME'] ?? 'your_cpanel_db_name'; // نام دیتابیس سی‌پنل را اینجا چک کنید
+$user = $_ENV['DB_USER'] ?? 'your_cpanel_db_user';
+$pass = $_ENV['DB_PASS'] ?? 'your_db_password';
 
 echo "<div style='font-family: Tahoma; direction: rtl; padding: 20px; line-height: 2;'>";
-echo "<h2>🚀 شروع عملیات نصب...</h2>";
+echo "<h2>🚀 شروع عملیات نصب روی هاست...</h2>";
 
 try {
-    //connect database
-    $pdo = new PDO("mysql:host=$host", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    // اصلاح اتصال: اتصال مستقیم به دیتابیس مشخص شده (بدون تلاش برای ساخت دیتابیس)
+    $dsn = "mysql:host=$host;dbname=$dbName;charset=utf8mb4";
+    $options = [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+    ];
 
-    //creat database
-    $pdo->exec("CREATE DATABASE IF NOT EXISTS `$dbName` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;");
-    echo "✅ دیتابیس <b>$dbName</b> با موفقیت بررسی/ایجاد شد.<br>";
-
-    //select database
-    $pdo->exec("USE `$dbName`");
+    $pdo = new PDO($dsn, $user, $pass, $options);
+    echo "✅ اتصال به دیتابیس <b>$dbName</b> با موفقیت انجام شد.<br>";
 
     $sql = "
     SET FOREIGN_KEY_CHECKS = 0;
 
-    -- (Clean Install) اصلاح شد: کامنت کردن توضیحات
+    DROP TABLE IF EXISTS attendance_logs;
     DROP TABLE IF EXISTS guests;
     DROP TABLE IF EXISTS experts;
     DROP TABLE IF EXISTS seminars;
-
-    CREATE TABLE IF NOT EXISTS `attendance_logs` (
-        `id` INT AUTO_INCREMENT PRIMARY KEY,
-        `guest_id` INT NOT NULL,
-        `seminar_id` INT NOT NULL,
-        `scanned_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        
-        -- ارتباط با جداول دیگر
-        CONSTRAINT `fk_log_guest` FOREIGN KEY (`guest_id`) REFERENCES `guests`(`id`) ON DELETE CASCADE,
-        CONSTRAINT `fk_log_seminar` FOREIGN KEY (`seminar_id`) REFERENCES `seminars`(`id`) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    DROP TABLE IF EXISTS payments;
 
     CREATE TABLE `seminars` (
         `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -69,42 +58,54 @@ try {
         `is_present` TINYINT(1) DEFAULT 0,
         `checkin_time` DATETIME NULL,
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        
         UNIQUE KEY `unique_checkin` (`seminar_id`, `phone`),
-        
         FOREIGN KEY (`seminar_id`) REFERENCES `seminars`(`id`) ON DELETE CASCADE,
         FOREIGN KEY (`expert_id`) REFERENCES `experts`(`id`) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-    SET FOREIGN_KEY_CHECKS = 1;
+    CREATE TABLE `attendance_logs` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `guest_id` INT NOT NULL,
+        `seminar_id` INT NOT NULL,
+        `scanned_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT `fk_log_guest` FOREIGN KEY (`guest_id`) REFERENCES `guests`(`id`) ON DELETE CASCADE,
+        CONSTRAINT `fk_log_seminar` FOREIGN KEY (`seminar_id`) REFERENCES `seminars`(`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     CREATE TABLE `payments` (
-    `id` int(11) NOT NULL AUTO_INCREMENT,
-    `first_name` varchar(100) NOT NULL,
-    `last_name` varchar(100) NOT NULL,
-    `phone` varchar(20) NOT NULL,
-    `expert_name` varchar(100) NOT NULL,
-    `receipt_image` varchar(255) NOT NULL,
-    `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`)
+      `id` INT AUTO_INCREMENT PRIMARY KEY,
+      `guest_id` INT NOT NULL,
+      `registrar_expert` VARCHAR(100) NOT NULL COMMENT 'کارشناس ثبت کننده',
+      `amount` DECIMAL(15, 0) NOT NULL DEFAULT 0 COMMENT 'مبلغ به تومان',
+      `receipt_image` VARCHAR(255) NOT NULL,
+      `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (`guest_id`) REFERENCES `guests`(`id`) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+    SET FOREIGN_KEY_CHECKS = 1;
     ";
-
+    
     $pdo->exec($sql);
-    echo "✅ جدول‌ها (Seminars, Experts, Guests) با موفقیت ساخته شدند.<br>";
+    echo "✅ جدول‌ها با موفقیت ساخته شدند.<br>";
 
-    //creat example
-    $pdo->exec("INSERT INTO seminars (title, date, is_active) VALUES ('سمینار بزرگ فروش', CURDATE(), 1)");
-    echo "✅ یک سمینار تستی با وضعیت فعال ایجاد شد.<br>";
+    // Insert example data
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM seminars");
+    $stmt->execute();
+    if ($stmt->fetchColumn() == 0) {
+        $pdo->exec("INSERT INTO seminars (title, date, is_active) VALUES ('سمینار تست', CURDATE(), 1)");
+        echo "✅ داده‌های تستی وارد شد.<br>";
+    }
 
-    echo "<hr><h3 style='color: green'>🎉 نصب با موفقیت به پایان رسید!</h3>";
-    echo "<p style='color: red'>⚠️ لطفاً فایل <b>install.php</b> را حذف کنید.</p>";
+    echo "<hr><h3 style='color: green'>🎉 نصب تمام شد!</h3>";
     echo "<a href='index.php'>رفتن به صفحه اصلی</a>";
 
 } catch (PDOException $e) {
-    echo "<h3 style='color: red'>❌ خطا در نصب:</h3>";
-    echo "پیام خطا: " . $e->getMessage();
-    echo "<br><strong>راهنمایی:</strong> مطمئن شوید در فایل .env پسورد دیتابیس صحیح است (معمولا در Laragon خالی است).";
+    echo "<h3 style='color: red'>❌ خطا:</h3>";
+    echo "متن خطا: " . $e->getMessage();
+    echo "<br><br><b>راهنمایی:</b><br>";
+    echo "1. آیا فایل .env را ساخته‌اید؟<br>";
+    echo "2. نام دیتابیس در سی‌پنل معمولا پیشوند دارد (مثلا user_seminar).<br>";
+    echo "3. آیا دستور composer install را زده‌اید؟ (اگر ارور Class not found دارید).";
 }
-
 echo "</div>";
+?>
